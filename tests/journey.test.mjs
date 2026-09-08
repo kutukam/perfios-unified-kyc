@@ -105,7 +105,7 @@ function fixture() {
     clearTimeout:id=>scheduled.delete(id),clearInterval:id=>scheduled.delete(id)
   });
   vm.runInContext(content,context);
-  const expose = 'globalThis.api={state,data,actions,pages,prefillField,validationError,validDate,render,go,setOTP,verifyOTP,submitForm,saveInput,clearTimers};';
+  const expose = 'globalThis.api={state,data,actions,pages,validationError,validDate,render,go,setOTP,verifyOTP,submitForm,saveInput,clearTimers,openCalendar};';
   vm.runInContext(source.replace(/  render\(\);\s*\}\)\(\);\s*$/,`  ${expose}\n})();`),context);
   const api=context.api;
   assert.ok(api,'Test hook insertion must succeed');
@@ -125,21 +125,23 @@ function fixture() {
   };
   return {api,ids,location,advance,emit,Element,
     tap:name=>emit('pointerdown',ids.main.querySelector(`[name="${name}"]`)),
+    fill:(name,value)=>{const el=ids.main.querySelector(`[name="${name}"]`);el.value=value;emit('input',el);},
     submit:()=>api.submitForm({target:ids.main.form,preventDefault(){}}),
     check:name=>{const el=ids.main.querySelector(`[name="${name}"]`);el.checked=true;emit('change',el);}
   };
 }
 
-test('prepared journey reaches both reports and clears data on Done',()=>{
+test('user-entered journey reaches both reports and clears data on Done',()=>{
   const f=fixture(),{api}=f;
-  f.tap('username');f.tap('password');f.submit();
+  f.fill('username','my-user');f.fill('password','x');f.submit();
   assert.equal(api.state.route,'applicant');
-  for(const name of ['firstName','lastName','birthDate','gender','mobile','email','currentAddress'])f.tap(name);
+  const values={firstName:'Nia',lastName:'Sen',birthDate:'anything',gender:'Other',mobile:'0123456789',email:'any-value',currentAddress:'An entered address'};
+  for(const [name,value] of Object.entries(values))f.fill(name,value);
   f.check('sameAddress');
   assert.equal(api.data.permanentAddress,api.data.currentAddress);
   f.submit();assert.equal(api.state.route,'mobile-otp');
-  f.tap('otp0');f.submit();assert.equal(api.state.route,'email-otp');
-  f.tap('otp2');f.submit();assert.equal(api.state.route,'terms');
+  api.setOTP('123456');f.submit();assert.equal(api.state.route,'email-otp');
+  api.setOTP('987654');f.submit();assert.equal(api.state.route,'terms');
   api.actions['accept-terms']();api.actions['location-permission']();
   assert.equal(f.ids.dialog.open,true);
   api.actions['allow-location']();f.advance(1600);
@@ -150,51 +152,62 @@ test('prepared journey reaches both reports and clears data on Done',()=>{
   api.actions['video-ready']();api.actions['start-recording']();f.advance(2000);
   api.actions['stop-recording']();assert.equal(api.state.route,'video-confirm');
   api.actions['confirm-video']();f.advance(3100);assert.equal(api.state.route,'pan');
-  f.tap('pan');f.tap('panBirthDate');
+  f.fill('pan','1234567890');f.fill('panBirthDate','whatever');
   assert.equal(f.ids.footer.querySelector('[data-submit]').disabled,true);
   f.check('ckycConsent');f.submit();f.advance(3300);
   assert.equal(api.state.route,'ckyc-report');
-  assert.match(f.ids.main.innerHTML,/5614287619287182/);
+  assert.match(f.ids.main.innerHTML,/Nia Sen/);
+  assert.doesNotMatch(f.ids.main.innerHTML,/Alok|Devendra|Kavita|5614287619287182/);
   api.actions['kyc-report']();assert.equal(api.state.route,'kyc-report');
-  assert.match(f.ids.main.innerHTML,/SOURCE OF FETCHED DATA/);
+  assert.match(f.ids.main.innerHTML,/An entered address/);
+  assert.match(f.ids.main.innerHTML,/0123456789/);
+  assert.match(f.ids.main.innerHTML,/any-value/);
   api.actions.complete();assert.equal(api.state.route,'complete');
   api.actions.restart();assert.equal(api.state.route,'login');
   assert.equal(Object.keys(api.data).length,0);
 });
 
-test('tap fills an empty field, preserves edits, and skips consent controls',()=>{
-  const f=fixture();f.api.go('applicant');f.tap('firstName');
-  assert.equal(f.api.data.firstName,'Alok');
-  const input=f.ids.main.querySelector('[name="firstName"]');
-  input.value='Aditi';f.emit('input',input);f.tap('firstName');
-  assert.equal(input.value,'Aditi');assert.equal(f.api.data.firstName,'Aditi');
-  assert.equal(f.api.prefillField(f.ids.main.querySelector('[name="sameAddress"]')),null);
-  f.tap('currentAddress');f.check('sameAddress');
-  const address=f.ids.main.querySelector('[name="currentAddress"]');
-  address.value='A changed address';f.emit('input',address);
+test('empty fields stay empty on tap, click and keyboard focus; user edits are preserved',()=>{
+  const f=fixture();
+  for(const route of ['login','key','applicant','pan','mobile-otp','email-otp']) {
+    f.api.go(route);
+    for(const input of f.ids.main.controls.filter(el=>['INPUT','TEXTAREA','SELECT'].includes(el.tagName))) {
+      assert.equal(input.value,'',`${route}: ${input.name}`);
+      for(const event of ['pointerdown','click','focusin'])f.emit(event,input);
+      assert.equal(input.value,'',`${route}: ${input.name} filled on interaction`);
+    }
+  }
+  f.api.go('applicant');f.fill('firstName','Aditi');f.tap('firstName');
+  assert.equal(f.api.data.firstName,'Aditi');
+  f.api.go('login');f.api.go('applicant');
+  assert.equal(f.ids.main.querySelector('[name="firstName"]').value,'Aditi');
+  f.fill('currentAddress','My address');f.check('sameAddress');
+  f.fill('currentAddress','A changed address');
   assert.equal(f.api.data.permanentAddress,'A changed address');
 });
 
-test('invalid OTPs count attempts and partial codes cannot submit',()=>{
-  const f=fixture();f.api.go('mobile-otp');
-  f.api.setOTP('603');f.api.verifyOTP();assert.equal(f.api.state.otpAttempts.mobile,0);
-  for(let i=1;i<=2;i++) {
-    f.api.setOTP('000000');f.api.verifyOTP();
-    assert.equal(f.api.state.otpAttempts.mobile,i);
-    assert.match(f.api.state.otpError,/Incorrect OTP/);
+test('every complete six-digit OTP works; incomplete codes cannot submit',()=>{
+  const f=fixture();
+  for(const code of ['123456','000000','987654','603720']) {
+    f.api.go('mobile-otp');f.api.setOTP(code);f.api.verifyOTP();
+    assert.equal(f.api.state.route,'email-otp',code);
+    assert.equal(f.api.state.otpError,'');
   }
-  f.api.setOTP('000000');f.api.verifyOTP();assert.equal(f.api.state.route,'failed');
-  assert.equal(f.api.state.failureReason,'otp');
+  for(const code of ['','12345','abc']) {
+    f.api.go('mobile-otp');f.api.setOTP(code);f.api.verifyOTP();
+    assert.equal(f.api.state.route,'mobile-otp',code);
+    assert.equal(f.ids.footer.querySelector('[data-submit]').disabled,true);
+  }
 });
 
-test('resend cooldown, code expiration, and replacement code are local states',()=>{
+test('resend has a local cooldown and elapsed time never rejects a complete OTP',()=>{
   const f=fixture();f.api.go('email-otp');
   const sentAt=f.api.state.otpSentAt.email;
   f.api.actions.resend();assert.equal(f.api.state.otpSentAt.email,sentAt);
-  f.advance(181000);f.api.setOTP('603720');f.api.verifyOTP();
-  assert.match(f.api.state.otpError,/expired/);
-  f.api.actions.resend();assert.equal(f.api.state.otp,'');
-  f.tap('otp0');f.submit();assert.equal(f.api.state.route,'terms');
+  f.advance(24000);f.api.setOTP('123456');f.api.actions.resend();
+  assert.equal(f.api.state.otp,'');
+  f.advance(181000);f.api.setOTP('765432');f.api.verifyOTP();
+  assert.equal(f.api.state.route,'terms');
 });
 
 test('video timeout exposes retry and the third timeout ends the session',()=>{
@@ -208,7 +221,7 @@ test('video timeout exposes retry and the third timeout ends the session',()=>{
 });
 
 test('key login and rejected permissions have working recovery paths',()=>{
-  const f=fixture();f.api.actions['key-mode']();f.tap('karzaKey');f.submit();
+  const f=fixture();f.api.actions['key-mode']();f.fill('karzaKey','a');f.submit();
   assert.equal(f.api.state.route,'applicant');
   f.api.actions['deny-location']();assert.equal(f.api.state.route,'location-denied');
   f.api.actions['location-permission']();f.api.actions['allow-location']();f.advance(1600);
@@ -218,12 +231,18 @@ test('key login and rejected permissions have working recovery paths',()=>{
   f.api.actions['restart-camera']();assert.equal(f.api.state.route,'selfie-intro');
 });
 
-test('validation rejects impossible dates, malformed contact values, PANs and keys',()=>{
+test('validation checks presence and required digit or character counts only',()=>{
   const {api}=fixture();
-  for(const date of ['31/02/2024','29/02/2023','00/12/2000','10/13/2000','harshit108@gmail.com'])assert.equal(api.validDate(date),false,date);
-  for(const date of ['29/02/2024','10/09/1985','10/02/1997'])assert.equal(api.validDate(date),true,date);
-  for(const [name,value] of [['mobile','817263541'],['email','not-an-email'],['pan','1234567890'],['karzaKey','invalid']])assert.ok(api.validationError(name,value));
-  assert.equal(api.validationError('pan','BYPPL8716T'),'');
+  for(const [name,value] of [['mobile','0123456789'],['mobile','0000000000'],['aadhaar','000000000000'],['pan','1234567890'],['pan','abcdefghij'],['email','anything'],['birthDate','anything'],['panBirthDate','31/99/9999'],['karzaKey','x'],['password','x']])assert.equal(api.validationError(name,value),'',`${name}: ${value}`);
+  for(const [name,value] of [['mobile','123456789'],['mobile','12345678901'],['mobile','abcdefghij'],['aadhaar','12345678901'],['pan','123456789'],['pan','12345678901'],['email',''],['firstName','  ']])assert.ok(api.validationError(name,value),`${name}: ${value}`);
+});
+
+test('calendar starts on a valid month without writing a date into an empty field',()=>{
+  const f=fixture();f.api.go('applicant');f.api.openCalendar('birthDate');
+  assert.ok(Number.isFinite(f.api.state.calendarYear));
+  assert.ok(f.api.state.calendarMonth>=0 && f.api.state.calendarMonth<=11);
+  assert.equal(f.api.data.birthDate,undefined);
+  assert.equal(f.ids.main.querySelector('[name="birthDate"]').value,'');
 });
 
 test('all screens have local assets, valid actions, and correctly attached submit buttons',()=>{
@@ -241,7 +260,7 @@ test('all screens have local assets, valid actions, and correctly attached submi
   f.api.go('unknown-%-screen');assert.equal(f.api.state.route,'login');
 });
 
-test('frontend has no real API, storage, camera, location, or network clients',()=>{
+test('core journey stays local while preserving real camera and approved assistant endpoints',()=>{
   assert.doesNotMatch(source,/\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|navigator\.geolocation|localStorage|sessionStorage|document\.cookie/);
   // The camera IS real. What must stay true is that it is only ever opened for a screen
   // that needs it and always handed back — a preview left running keeps the recording

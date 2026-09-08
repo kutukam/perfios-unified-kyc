@@ -22,16 +22,19 @@ You can also open `dist/index.html` directly. The local server gives the most co
 
 ## Interactions
 
-- Tap an empty field to insert its prepared value. It remains editable; tapping an already filled field never replaces your changes.
-- Tap any empty OTP box to fill all six digits. The prepared code is **603720**. You can type or paste a different code to exercise error and retry states.
-- The first tap on Gender chooses Male; subsequent taps let you select another option. Tap the date field to fill it or its calendar icon to choose a date.
+- All fields open empty. Enter your own values; tapping, focusing, or changing screens never inserts sample personal details.
+- Type or paste any six-digit OTP. **123456**, **000000**, and every other six-digit code work. There is no code match, expiry, or failed-attempt gate.
+- Validation checks required fields, a 10-digit mobile number and a 10-character PAN only. Other text fields accept any non-empty entry; no PAN pattern, mobile prefix, email format, password complexity or birth-date check blocks the journey.
+- Desktop and iPad use the full viewport, with responsive form columns and report cards. The bottom action dock reserves a separate column for the microphone and a separate row for assistance errors. Phone screens retain a single-column form.
+- Reports show the details entered during the current journey; reference names, addresses, fixed report IDs, scores and location values have been removed.
+- Gender starts unselected. Choose an option yourself. Dates can be typed, or selected with the calendar icon; opening the calendar does not insert a date.
 - Check “Same as the previously filled Current Address” to copy the current address. Later changes to the current address stay synchronized while this checkbox is selected.
 - Both username/password and x-karza-key login lead into the same journey.
-- **The camera is real.** The selfie and video-liveness steps open the device camera and microphone, the liveness step records an actual clip, and the review screen plays that clip back with its own audio. A frame is kept from the capture and is what the recording bar and the report's “on Application Form” photograph show. Nothing is uploaded: the clip and the frame live in the browser for the length of the journey and are dropped on “Done”. Where there is no camera — no webcam, a refused permission, an older browser — every one of those screens falls back to the supplied artwork and the journey still runs end to end.
+- **The camera is real.** The selfie and video-liveness steps open the device camera and microphone, the liveness step records an actual clip, and the review screen plays that clip back with its own audio. A frame is kept from the capture and is what the recording bar and the applicant photograph in the report show. Nothing is uploaded: the clip and the frame live in the browser for the length of the journey and are dropped on “Done”. Where there is no camera — no webcam, a refused permission, an older browser — every one of those screens falls back to the supplied artwork and the journey still runs end to end.
 - Location, verification, OTPs and the reports remain simulated locally. No location, authentication, KYC or OTP service is contacted.
 - Selfie capture advances through framing and capture states automatically. For the video step, press **Start**, then **Stop** within ten seconds, review, and confirm. Waiting more than ten seconds shows the retry state.
 - The review screen plays the clip that was just recorded, with real play, pause, scrub and mute. Its length is the real recording's, not a fixed twelve seconds.
-- PAN consent must be checked before continuing. Expand the recording bar to see the portrait and application number. Expand/collapse report sections to inspect comparisons.
+- PAN consent must be checked before continuing. Expand the recording bar to see the portrait and application number. Reports use only the details entered in this journey.
 - **Done** starts a new journey and clears entered values. Refreshing also clears entered values. Browser back/forward follows the screen history.
 
 ## Included flow
@@ -89,7 +92,7 @@ Nothing is transmitted until the customer accepts the SDK's own consent dialog, 
 
 - **How a session starts.** The assistant sends a link carrying `?cb=<code>`; opening it
   prompts for consent and, on approval, connects. Without that parameter the SDK is inert.
-- **The help button.** The microphone button above the footer starts the Perfios voice
+- **The help button.** The microphone button at the bottom right, in its own action-dock column, starts the Perfios voice
   assistant in the page. The Sarvam API key never reaches this bundle: the page asks the
   co-browse worker for a short-lived session token and sends every runtime call through
   `/api/sarvam/*`, which injects the key server-side.
@@ -129,8 +132,8 @@ npm run build:vendor
 
 - `dist/index.html` — accessible application shell.
 - `dist/styles.css` — responsive layouts, design colors, components, local font declarations, and reduced-motion support.
-- `dist/content.js` — prepared values, reference copy, and report data.
-- `dist/app.js` — routing, forms, validation, tap-to-fill, OTPs, capture states, and reports.
+- `dist/content.js` — journey copy and artwork descriptions.
+- `dist/app.js` — routing, forms, validation, OTPs, capture states, and reports.
 - `dist/assets/` — original artwork and photographs extracted from the supplied PDFs, plus webfont subsets reconstructed from their original outlined glyphs. Additional characters fall back to the browser’s sans-serif font.
 - `dist/assist.js` — co-browse start-up and the voice help button.
 - The camera lives in `dist/app.js` (`camera`): one stream, opened when a capture screen

@@ -229,5 +229,13 @@
   });
 
   paint('');
-  document.querySelector('#application').append(mount);
+  const dock = document.querySelector('#action-dock');
+  dock.append(mount);
+
+  // Keep dialogs and transient messages clear of the entire action area, even when
+  // labels wrap, text is enlarged, or assistance displays an error.
+  const measureDock = () => document.documentElement.style.setProperty('--action-dock-height', `${Math.ceil(dock.getBoundingClientRect().height)}px`);
+  measureDock();
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(measureDock).observe(dock);
+  else window.addEventListener('resize', measureDock);
 })();
