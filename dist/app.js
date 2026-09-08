@@ -82,7 +82,7 @@
     const channel = activeChannel();
     if (!state.otpSentAt[channel]) state.otpSentAt[channel] = Date.now();
     const isEmail = channel === 'email';
-    main.innerHTML = `<section class="screen otp-screen">${title(isEmail ? 'Email Verification' : 'Mobile OTP Verification',`Please enter the OTP sent to your ${isEmail ? 'email ID' : 'mobile number'}<br>${isEmail ? emailMask() : phoneMask()}`)}<form id="form-otp" data-form="otp" novalidate><div class="otp-boxes" role="group" aria-label="Six digit verification code">${Array.from({length:6},(_,i) => `<input type="text" name="otp${i}" data-otp="${i}" aria-label="Digit ${i+1}" inputmode="numeric" pattern="[0-9]" maxlength="1" autocomplete="${i === 0 ? 'one-time-code' : 'off'}" value="${state.otp[i] || ''}">`).join('')}</div><div class="otp-help" ${state.otpError ? 'hidden' : ''}>Didn’t receive the code? <button type="button" data-action="resend" disabled>Resend code <b id="resend-time"></b></button></div><div class="otp-feedback" role="status" aria-live="polite">${state.otpError ? `${esc(state.otpError)}<span class="attempts">${attemptCopy(3-state.otpAttempts[channel])}</span>` : ''}</div></form></section>`;
+    main.innerHTML = `<section class="screen otp-screen">${title(isEmail ? 'Email Verification' : 'Mobile OTP Verification',`Please enter the OTP sent to your ${isEmail ? 'email ID' : 'mobile number'}<br>${isEmail ? emailMask() : phoneMask()}`)}<form id="form-otp" data-form="otp" novalidate><div class="otp-boxes" role="group" aria-label="Six digit verification code">${Array.from({length:6},(_,i) => `<input type="text" name="otp${i}" data-otp="${i}" aria-label="Digit ${i+1}" inputmode="numeric" pattern="[0-9]" maxlength="1" autocomplete="off" value="${state.otp[i] || ''}">`).join('')}</div><div class="otp-help" ${state.otpError ? 'hidden' : ''}>Didn’t receive the code? <button type="button" data-action="resend" disabled>Resend code <b id="resend-time"></b></button></div><div class="otp-feedback" role="status" aria-live="polite">${state.otpError ? `${esc(state.otpError)}<span class="attempts">${attemptCopy(3-state.otpAttempts[channel])}</span>` : ''}</div></form></section>`;
     setFooter(button('Verify','',{form:'form-otp',disabled:!/^\d{6}$/.test(state.otp)}));
     tickOTP();
     repeat(tickOTP,1000);
@@ -634,11 +634,22 @@
   document.addEventListener('input',event=>{
     const input=event.target;
     if(input.dataset.otp!==undefined) {
-      input.value=input.value.replace(/\D/g,'').slice(-1);
+      /* A phone autofills the whole code into the box that asked for it, and a paste can
+         do the same. Keeping only the last character threw five of the six digits away and
+         left Verify disabled, which reads as "it will not accept my code". Spread whatever
+         arrives across the boxes from here on. */
       const inputs=Array.from(main.querySelectorAll('[data-otp]'));
+      const from=Number(input.dataset.otp);
+      const digits=input.value.replace(/\D/g,'');
+      if(digits.length>1) {
+        inputs.slice(from).forEach((node,offset) => {node.value=digits[offset] || '';});
+        inputs[Math.min(inputs.length-1,from+digits.length-1)]?.focus();
+      } else {
+        input.value=digits.slice(-1);
+        if(input.value)inputs[from+1]?.focus();
+      }
       state.otp=inputs.map(node=>node.value || ' ').join('').trimEnd();
       clearOTPError();
-      if(input.value)inputs[Number(input.dataset.otp)+1]?.focus();
       updateSubmit();return;
     }
     if(input.id==='play-progress'){

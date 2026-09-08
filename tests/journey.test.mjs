@@ -306,3 +306,22 @@ test('guided assistance carries no credential and stays out of the journey it gu
   for(const url of ['https://evil.example','http://localhost.evil.example','//localhost:1'])
     assert.equal(new RegExp(endpoint.source).test(url),false,url);
 });
+
+test('a code that arrives all at once fills the whole row, and no box claims to be the code',()=>{
+  // A phone autofills the SMS code into the box that asked for it; a paste does the same.
+  // Keeping only the last character left five boxes empty and Verify disabled.
+  const f=fixture();f.api.go('mobile-otp');
+  const boxes=f.ids.main.querySelectorAll('[data-otp]');
+  boxes[0].value='123456';boxes[0].dispatchEvent({type:'input'});
+  assert.equal(Array.from(boxes).map(b=>b.value).join(''),'123456');
+  assert.equal(f.api.state.otp,'123456');
+  // Typing one digit at a time still lands one per box.
+  const g=fixture();g.api.go('mobile-otp');
+  const row=g.ids.main.querySelectorAll('[data-otp]');
+  '987654'.split('').forEach((d,i)=>{row[i].value=d;row[i].dispatchEvent({type:'input'});});
+  assert.equal(g.api.state.otp,'987654');
+  // `one-time-code` describes a field holding the WHOLE code. On a maxlength=1 box it makes
+  // the assistant's page model judge one character against a 4-8 digit shape and mark the
+  // box permanently invalid, so no step keyed on it being filled can ever complete.
+  assert.doesNotMatch(source,/one-time-code/);
+});
