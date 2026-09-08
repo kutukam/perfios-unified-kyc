@@ -192,11 +192,33 @@
       };
       try {recorder.start();} catch {this.recorder = null;}
     },
+    /**
+     * Stop, and RESOLVE ONLY ONCE THE CLIP EXISTS.
+     *
+     * `MediaRecorder.stop()` returns immediately; the blob is assembled in `onstop`, a
+     * task later. The review screen used to render in the same tick as the stop, so
+     * `clip` was always still empty and every journey fell through to the stand-in
+     * picture — the recording was made, kept, and then never shown to anyone.
+     *
+     * The timeout is not decoration: a recorder that never fires `onstop` (a revoked
+     * permission, a track that died with the tab in the background) must not strand the
+     * customer on the recording screen. It falls through to the placeholder, which is
+     * exactly what the old code did every single time.
+     */
     stopRecording() {
-      try {
-        if (this.recorder && this.recorder.state === 'recording') this.recorder.stop();
-      } catch { /* already stopped */ }
+      const recorder = this.recorder;
       this.recorder = null;
+      if (!recorder || recorder.state !== 'recording') return Promise.resolve();
+      return new Promise(resolve => {
+        let settled = false;
+        const done = () => {if (!settled) {settled = true; resolve();}};
+        // `onstop` (assigned in record()) built the clip already: a handler set through the
+        // property runs at the position where it was first assigned, which was earlier
+        // than this listener. So by the time this fires, `clip` is there.
+        recorder.addEventListener('stop',done,{once:true});
+        const guard = setTimeout(done,1500);
+        try {recorder.stop();} catch {clearTimeout(guard); done();}
+      });
     },
     release() {
       this.stopRecording();
@@ -212,15 +234,35 @@
       this.still = '';
     }
   };
-  /** The frame this journey actually captured, or the supplied artwork. */
+  /**
+   * NO STAND-IN FACE.
+   *
+   * Every camera fallback on these screens used to be a photograph of a real, named
+   * person — presented as the applicant's own selfie, their own liveness frame, and
+   * their own captured video. Whoever is shown a demo sees a stranger's face labelled
+   * as theirs, and the person in the photograph never agreed to any of it.
+   *
+   * So the fallback is drawn, not photographed. It is only ever reached when there is
+   * no camera to use; with one, every screen below shows the live stream and then the
+   * frame this journey actually captured.
+   */
+  const FACE_PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 440" preserveAspectRatio="xMidYMid slice">' +
+    '<rect width="320" height="440" fill="#E8EDF5"/>' +
+    '<circle cx="160" cy="170" r="74" fill="#BAC7DA"/>' +
+    '<path d="M22 440c0-84 62-146 138-146s138 62 138 146z" fill="#BAC7DA"/>' +
+    '</svg>');
+  const facePlaceholder = (alt,extra = '') => `<img src="${FACE_PLACEHOLDER}" alt="${esc(alt)}" ${extra}>`;
+
+  /** The frame this journey actually captured, or the drawn placeholder. */
   const capturedFrame = (alt,extra) => camera.still
     ? `<img src="${esc(camera.still)}" alt="${esc(alt)}" ${extra || ''}>`
-    : asset('portrait.jpg',alt,extra);
+    : facePlaceholder(alt,extra || '');
 
   function renderSelfie() {
     main.innerHTML = `<section class="screen selfie-screen"><div class="selfie-oval">${camera.live()
       ? '<video class="camera-view" playsinline muted autoplay aria-label="Camera preview"></video>'
-      : asset('selfie-frame.png','Face positioned inside the capture frame','width="288" height="400"')}</div><p class="selfie-status" role="status" aria-live="polite">Ensure your face is<br>inside the frame</p></section>`;
+      : facePlaceholder('Face positioned inside the capture frame','width="288" height="400"')}</div><p class="selfie-status" role="status" aria-live="polite">Ensure your face is<br>inside the frame</p></section>`;
     setFooter('',true);
     later(() => {
       main.querySelector('.selfie-oval').classList.add('aligned');
@@ -236,14 +278,14 @@
   function renderConsent() {
     main.innerHTML = `<section class="screen consent-screen">${title('Video Recording Consent','We will be recording you during the KYC journey for audit purposes, so position it correctly within the frame throughout the journey.')}${camera.live()
       ? '<video class="portrait camera-view" playsinline muted autoplay aria-label="Camera preview"></video>'
-      : asset('portrait.jpg','Captured portrait preview','class="portrait" width="320" height="440"')}</section>`;
+      : facePlaceholder('Camera preview unavailable','class="portrait" width="320" height="440"')}</section>`;
     setFooter(button('Continue','video-ready'));
   }
 
   function renderVideo(ready = false) {
     main.innerHTML = `<section class="screen recording-screen">${camera.live()
       ? '<video class="recording-image camera-view" playsinline muted autoplay aria-label="Camera preview"></video>'
-      : asset('portrait.jpg','Video recording preview','class="recording-image" width="320" height="440"')}${ready ? '' : '<span class="recording-badge" id="record-time">Rec 00:00</span>'}</section>`;
+      : facePlaceholder('Camera preview unavailable','class="recording-image" width="320" height="440"')}${ready ? '' : '<span class="recording-badge" id="record-time">Rec 00:00</span>'}</section>`;
     setFooter(`<div class="recording-controls">${ready ? '<h2>Help us verify it’s you</h2><p>We will be recording you for this, click on start and read the number out loud in 10 seconds</p>' : '<h1>4-8-7-6</h1><p>Please click on the stop button once you are done reading the numbers</p>'}</div>${button(ready ? 'Start' : 'Stop',ready ? 'start-recording' : 'stop-recording',{className:ready ? '' : 'stop'})}`);
     if (!ready) {
       const started = Date.now();
@@ -261,7 +303,7 @@
     state.playTime = 0;
     main.innerHTML = `<section class="screen video-confirm">${title('Confirm Captured Video','Please make sure the audio and video captured is clear to understand')}<div class="video-player">${camera.clip
       ? `<video id="clip" playsinline preload="metadata" src="${esc(camera.clip)}" aria-label="Captured video"></video>`
-      : asset('portrait.jpg','Captured video preview','width="320" height="456"')}<button class="sound-button" data-action="mute" aria-label="Mute audio" aria-pressed="false">${asset('sound.png','','width="18" height="18"')}</button><button class="play-button" data-action="play" aria-label="Play captured video">${asset('play.png','','width="12" height="12"')}</button><div class="player-controls"><span id="play-time">00:00</span><input id="play-progress" type="range" min="0" max="12" step="0.1" value="0" aria-label="Video position"><span id="play-total">00:12</span></div></div></section>`;
+      : facePlaceholder('No video was captured','width="320" height="456"')}<button class="sound-button" data-action="mute" aria-label="Mute audio" aria-pressed="false">${asset('sound.png','','width="18" height="18"')}</button><button class="play-button" data-action="play" aria-label="Play captured video">${asset('play.png','','width="12" height="12"')}</button><div class="player-controls"><span id="play-time">00:00</span><input id="play-progress" type="range" min="0" max="12" step="0.1" value="0" aria-label="Video position"><span id="play-total">00:12</span></div></div></section>`;
     setFooter(`<div class="row">${button('Retake','retake-video',{className:'outline'})}${button('Confirm','confirm-video')}</div>`);
     const clip = main.querySelector('#clip');
     if (clip) {
@@ -584,9 +626,9 @@
     'restart-camera':()=>go(data.captureMode==='video' ? 'video-intro' : 'selfie-intro'),
     'retry-selfie':()=>go('selfie-capture'), 'retry-video':()=>go('video-ready'),
     'video-ready':()=>go('video-ready'), 'start-recording':()=>{camera.record();go('video-recording');},
-    'stop-recording':()=>{
+    'stop-recording':async ()=>{
       camera.grabStill();          // while the live preview is still on screen
-      camera.stopRecording();
+      await camera.stopRecording();// the clip only exists once the recorder has stopped
       state.hasVideo=true;
       go('video-confirm');
     },
