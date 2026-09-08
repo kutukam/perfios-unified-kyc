@@ -249,8 +249,8 @@
   const FACE_PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 440" preserveAspectRatio="xMidYMid slice">' +
     '<rect width="320" height="440" fill="#E8EDF5"/>' +
-    '<circle cx="160" cy="170" r="74" fill="#BAC7DA"/>' +
-    '<path d="M22 440c0-84 62-146 138-146s138 62 138 146z" fill="#BAC7DA"/>' +
+    '<circle cx="160" cy="158" r="54" fill="#BAC7DA"/>' +
+    '<path d="M58 440c0-62 46-108 102-108s102 46 102 108z" fill="#BAC7DA"/>' +
     '</svg>');
   const facePlaceholder = (alt,extra = '') => `<img src="${FACE_PLACEHOLDER}" alt="${esc(alt)}" ${extra}>`;
 
