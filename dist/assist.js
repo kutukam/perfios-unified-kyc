@@ -36,8 +36,8 @@
   const AGENT = {
     orgId: '019ec301-92a0-7a28-846c-b1afafcdf30d',
     workspaceId: '019ec301-92a7-7f33-81f2-14326ae2265e',
-    appId: '',      // filled from the dashboard — see journeys/perfios-unified-kyc/README
-    version: 0
+    appId: 'One-SDK-GFF-e5422ef4-af74',
+    version: 1
   };
 
   /* An authoring escape hatch, not a customer-facing feature: ?cb_endpoint=http://localhost:8787
@@ -171,6 +171,9 @@
 
       const conversation = new window.SarvamConvAI.ConversationAgent({
         apiKey: '',
+        // Not optional for a CALL. Without it the SDK refuses to start at all, and the
+        // customer just sees the help button give up.
+        audioInterface: new window.SarvamConvAI.BrowserAudioInterface(),
         baseUrl: `${WORKER}/api/sarvam/`,
         platform: 'browser',
         customHeaders: {
