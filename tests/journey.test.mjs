@@ -102,10 +102,14 @@ function fixture() {
     Date:class extends Date{static now(){return clock;}},
     setTimeout:(fn,delay)=>schedule(fn,delay),
     setInterval:(fn,delay)=>schedule(fn,delay,true),
-    clearTimeout:id=>scheduled.delete(id),clearInterval:id=>scheduled.delete(id)
+    clearTimeout:id=>scheduled.delete(id),clearInterval:id=>scheduled.delete(id),
+    // Enough of the recording APIs for the clip to exist at all: without URL the
+    // object-URL call throws into its own catch and every clip silently comes back ''.
+    URL:{createObjectURL:()=>'blob:test-clip',revokeObjectURL(){}},
+    Blob:class{constructor(parts){this.parts=parts;}}
   });
   vm.runInContext(content,context);
-  const expose = 'globalThis.api={state,data,actions,pages,validationError,validDate,render,go,setOTP,verifyOTP,submitForm,saveInput,clearTimers,openCalendar};';
+  const expose = 'globalThis.api={state,data,actions,pages,validationError,validDate,render,go,setOTP,verifyOTP,submitForm,saveInput,clearTimers,openCalendar,camera};';
   vm.runInContext(source.replace(/  render\(\);\s*\}\)\(\);\s*$/,`  ${expose}\n})();`),context);
   const api=context.api;
   assert.ok(api,'Test hook insertion must succeed');
@@ -123,7 +127,7 @@ function fixture() {
     }
     clock=target;
   };
-  return {api,ids,location,advance,emit,Element,
+  return {api,ids,location,advance,emit,Element,context,
     tap:name=>emit('pointerdown',ids.main.querySelector(`[name="${name}"]`)),
     fill:(name,value)=>{const el=ids.main.querySelector(`[name="${name}"]`);el.value=value;emit('input',el);},
     submit:()=>api.submitForm({target:ids.main.form,preventDefault(){}}),
@@ -131,7 +135,7 @@ function fixture() {
   };
 }
 
-test('user-entered journey reaches both reports and clears data on Done',()=>{
+test('user-entered journey reaches both reports and clears data on Done',async ()=>{
   const f=fixture(),{api}=f;
   f.fill('username','my-user');f.fill('password','x');f.submit();
   assert.equal(api.state.route,'applicant');
@@ -150,7 +154,9 @@ test('user-entered journey reaches both reports and clears data on Done',()=>{
   assert.equal(api.state.route,'video-intro');
   api.actions['video-permission']();assert.equal(api.state.route,'recording-consent');
   api.actions['video-ready']();api.actions['start-recording']();f.advance(2000);
-  api.actions['stop-recording']();assert.equal(api.state.route,'video-confirm');
+  // Stopping now waits for the recorder to hand over the clip, so the review screen
+  // shows the video that was actually recorded rather than a placeholder.
+  await api.actions['stop-recording']();assert.equal(api.state.route,'video-confirm');
   api.actions['confirm-video']();f.advance(3100);assert.equal(api.state.route,'pan');
   f.fill('pan','1234567890');f.fill('panBirthDate','whatever');
   assert.equal(f.ids.footer.querySelector('[data-submit]').disabled,true);
@@ -324,4 +330,66 @@ test('a code that arrives all at once fills the whole row, and no box claims to 
   // the assistant's page model judge one character against a 4-8 digit shape and mark the
   // box permanently invalid, so no step keyed on it being filled can ever complete.
   assert.doesNotMatch(source,/one-time-code/);
+});
+
+/** A MediaRecorder that behaves like the real one in the one way that matters: `stop()`
+ *  returns immediately and the data arrives on a later task. */
+function stubRecorder(context) {
+  const made = [];
+  context.MediaRecorder = class {
+    static isTypeSupported() {return true;}
+    constructor() {this.state='inactive';this.mimeType='video/webm';this._on={};made.push(this);}
+    addEventListener(type,fn) {(this._on[type] ||= []).push(fn);}
+    start() {this.state='recording';}
+    stop() {
+      this.state='inactive';
+      // Deliberately deferred — this is the ordering the shipped bug fell through.
+      setTimeout(()=>{
+        this.ondataavailable?.({data:{size:12}});
+        this.onstop?.();
+        (this._on.stop || []).forEach(fn=>fn());
+      },0);
+    }
+  };
+  return made;
+}
+
+test('the review screen shows the video that was recorded, not a stand-in',async ()=>{
+  const f=fixture();
+  stubRecorder(f.context);
+  f.api.camera.stream={getTracks:()=>[]};          // a camera is open
+  f.api.camera.record();
+  // The clip does NOT exist yet: stopping is what produces it.
+  assert.equal(f.api.camera.clip,'');
+  const stopped=f.api.camera.stopRecording();
+  await new Promise(resolve=>setImmediate(resolve));   // the recorder's own deferred stop
+  await stopped;
+  assert.equal(f.api.camera.clip,'blob:test-clip','stopRecording must resolve only once the clip exists');
+  f.api.go('video-confirm');
+  assert.match(f.ids.main.innerHTML,/<video id="clip"[^>]*src="blob:test-clip"/,'the review screen must play the captured clip');
+});
+
+test('a recorder that never stops cannot strand the journey',async ()=>{
+  const f=fixture();
+  f.api.camera.stream={getTracks:()=>[]};
+  f.api.camera.recorder={state:'recording',stop(){},addEventListener(){}};   // never fires `stop`
+  const stopped=f.api.camera.stopRecording().then(()=>'stopped');
+  f.advance(1600);                                     // the guard's own timeout comes due
+  const settled=await Promise.race([
+    stopped,
+    new Promise(resolve=>setTimeout(()=>resolve('hung'),1000)),
+  ]);
+  assert.equal(settled,'stopped');
+});
+
+test('no photograph of a real person ships as a camera fallback',()=>{
+  // A demo that cannot open a camera must not put a stranger's face on screen labelled
+  // as the applicant's own selfie, liveness frame and captured video.
+  for(const file of ['portrait.jpg','selfie-frame.png','face-match-application.jpg','face-match-ckyc.jpg'])
+    assert.equal(existsSync(root+'dist/assets/'+file),false,`${file} must not ship`);
+  assert.doesNotMatch(source,/portrait\.jpg|selfie-frame|face-match/);
+  // Every camera fallback renders the drawn placeholder, and it is drawn, not fetched.
+  assert.match(source,/const FACE_PLACEHOLDER = 'data:image\/svg\+xml,'/);
+  for(const fallback of source.matchAll(/camera\.live\(\)[\s\S]{0,400}?\n\s*: ([a-zA-Z]+)\(/g))
+    assert.equal(fallback[1],'facePlaceholder',`camera fallback renders ${fallback[1]}()`);
 });
