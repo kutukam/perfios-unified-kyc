@@ -1603,6 +1603,31 @@ dialog .dialog-close {
    used, so actions, long error messages and enlarged text remain separate. */
 .assist { display:contents; }
 
+.assist__status {
+  grid-column:1 / -1;
+  grid-row:1;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px 16px;
+  padding:10px 14px;
+  border:1px solid #bad4c6;
+  border-radius:8px;
+  background:#eff9f3;
+  color:#17613e;
+  font-size:14px;
+  line-height:20px;
+}
+.assist__status button {
+  border:0;
+  background:transparent;
+  color:inherit;
+  font-weight:600;
+  padding:4px 8px;
+  min-height:32px;
+}
+
 .assist__error {
   grid-column:1 / -1;
   grid-row:1;

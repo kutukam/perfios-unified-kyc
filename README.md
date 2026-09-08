@@ -1,6 +1,6 @@
 # One SDK Mobile Journey
 
-A complete, responsive Unified KYC frontend built from the supplied One SDK Mobile Journey Figma/PDF screens. It uses plain HTML, CSS, and JavaScript with local images and fonts. No installation, build step, API keys, or external services are required.
+A complete, responsive Unified KYC frontend built from the supplied One SDK Mobile Journey Figma/PDF screens. It uses plain HTML, CSS, and JavaScript with local images and fonts. The core journey runs without a build step. Live voice assistance uses the configured co-browse/Sarvam services; API keys remain server-side.
 
 ## Run
 
@@ -87,8 +87,9 @@ string. It never receives values, keystrokes, pixels, or a DOM mirror, and it ca
 click, or navigate. Check that claim rather than trusting it: open the console and run
 `CoBrowse.__scanModelForTest()`, which prints the exact payload and starts nothing.
 
-Nothing is transmitted until the customer accepts the SDK's own consent dialog, and
-`init()` never throws — a co-browse failure cannot take the KYC journey down.
+Screen sharing starts only after the customer accepts the SDK's consent dialog. Voice
+startup waits for an active screen connection and the bot's actual connection acknowledgement.
+The active status and End control occupy a reserved row in the action dock.
 
 - **How a session starts.** The assistant sends a link carrying `?cb=<code>`; opening it
   prompts for consent and, on approval, connects. Without that parameter the SDK is inert.
@@ -96,6 +97,7 @@ Nothing is transmitted until the customer accepts the SDK's own consent dialog, 
   assistant in the page. The Sarvam API key never reaches this bundle: the page asks the
   co-browse worker for a short-lived session token and sends every runtime call through
   `/api/sarvam/*`, which injects the key server-side.
+- **Ending or reconnecting.** The microphone, dock End action, remote hangup and page exit stop both SDK lifecycles. Cancelled or timed-out microphone prompts cannot revive an old call. A retry opens a fresh screen session.
 - **The button is invisible to the assistant.** It sits behind `data-cobrowse-ignore`, so
   the assistant can never guide someone to press the assistant.
 - **Screen headings are focusable** (`h1[tabindex="0"]`, focused on each route change).
@@ -142,6 +144,7 @@ npm run build:vendor
 - `dist/vendor/` — script-tag builds of `@creditnirvana/cobrowse` and the Sarvam browser SDK.
 - `server.mjs` — optional static local server.
 - `tests/journey.test.mjs` — dependency-free checks of state transitions, validation, field behavior, and screen wiring.
+- `tests/assistance.test.mjs` — consent, connection acknowledgement, retry, timeout and SDK teardown regression checks.
 
 The implementation follows the supplied exports. Obvious inconsistencies were corrected where necessary for interaction: the email string in the date-of-birth field is replaced with a valid date, the key-login return link switches back to username/password, and verification destinations reflect the entered phone/email. Terminal screens include a usable retry or completion action. Branding and source artwork belong to their respective owners.
 
