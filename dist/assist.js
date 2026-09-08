@@ -27,6 +27,7 @@
 
   const WORKER = 'https://cobrowse.unikernel.ai';
   const TENANT = 'perfios';
+  const SITE = 'perfios-unified-kyc';   // which published journey the assistant guides
 
   /* Values from the agent's Deploy-with-code panel. `version` is pinned on purpose:
      Samvaad serves the older committed default when it is unset, which presents as a
@@ -58,12 +59,51 @@
   }
 
   // ── 1. Co-browse ────────────────────────────────────────────────────────────
-  if (window.CoBrowse) {
-    window.CoBrowse.init({
+  //
+  // Two ways in, and they start assistance at different moments:
+  //
+  //   ?cb=<code>  the assistant sent this link, so the session already exists and the
+  //               SDK binds to it on load. Consent is asked for immediately.
+  //   no ?cb=     the customer came here on their own. NOTHING starts on load — the
+  //               page mints a session only when they press the help button, so a
+  //               visitor who never asks for help is never asked for consent and never
+  //               publishes a page model.
+  //
+  // Either way `code` is what the assistant is given, and it is the only thing that
+  // lets it see this screen.
+  const endpoint = endpointOverride();
+  let code = cobrowseCode();
+
+  function startCoBrowse(sessionRef) {
+    if (!window.CoBrowse) return Promise.resolve(null);
+    return window.CoBrowse.init({
       tenant: TENANT,
-      endpoint: endpointOverride(),
-      linkParam: 'cb'
-    }).then(handle => { window.CoBrowse.instance = handle; });
+      endpoint,
+      linkParam: 'cb',
+      // Only meaningful for a session this page minted; on a ?cb= link the SDK reads the
+      // reference out of the URL and never calls this.
+      ...(sessionRef ? { sessionToken: () => Promise.resolve(sessionRef) } : {})
+    }).then(handle => { window.CoBrowse.instance = handle; return handle; });
+  }
+
+  if (code) void startCoBrowse(null);
+
+  /** Mint a session for a customer who arrived without a link, and bind this page to it. */
+  async function openSession() {
+    if (code) return code;
+    const res = await fetch(`${endpoint || WORKER}/api/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Without `site` the session runs another journey's flow entirely, and every
+      // instruction the assistant gives is confidently about the wrong application.
+      body: JSON.stringify({ site: SITE })
+    });
+    if (!res.ok) throw new Error(`session ${res.status}`);
+    const created = await res.json();
+    code = String(created.key || created.sessionId || '');
+    if (!code) throw new Error('The assistant could not open a screen session.');
+    await startCoBrowse(code);
+    return code;
   }
 
   // ── 2. The help button ──────────────────────────────────────────────────────
@@ -114,6 +154,11 @@
     phase = 'connecting';
     paint('');
     try {
+      // Before anything else: make sure there IS a screen to show the assistant. Starting
+      // the voice agent first would put it on the line with no idea what the customer is
+      // looking at, which reads to them as a broken assistant rather than a missing session.
+      const screenCode = await openSession();
+
       const res = await fetch(`${WORKER}/api/extension/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,7 +193,7 @@
           agent_variables: {
             // What lets the agent SEE this screen. Without it every screen tool answers
             // session_unavailable and it guides blind.
-            cobrowse_code: cobrowseCode()
+            cobrowse_code: screenCode
           }
         }
       });
