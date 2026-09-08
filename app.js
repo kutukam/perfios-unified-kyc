@@ -3,7 +3,6 @@
 (() => {
   'use strict';
   const content = window.JourneyContent;
-  const prepared = content.values;
   const main = document.querySelector('#main');
   const footer = document.querySelector('#footer');
   const bar = document.querySelector('#recording-bar');
@@ -16,7 +15,8 @@
     captureAttempts: 0, videoAttempts: 0, locationAllowed: false,
     cameraAllowed: false, microphoneAllowed: false, playing: false,
     playTime: 0, muted: false, failureReason: 'liveness', calendarField: '',
-    calendarYear: 1985, calendarMonth: 8, hasVideo: false
+    calendarYear: new Date().getFullYear(), calendarMonth: new Date().getMonth(), hasVideo: false,
+    applicationNumber: String(Date.now())
   };
   let timers = [];
   let toastTimer;
@@ -45,10 +45,12 @@
   const check = (name, copy, className = '') => `<label class="check-label ${className}"><input type="checkbox" name="${name}" ${data[name] ? 'checked' : ''}><span>${copy}</span></label>`;
   const divider = () => '<div class="divider">OR</div>';
   const form = (name, html) => `<form id="form-${name}" data-form="${name}" novalidate><div class="form-fields">${html}</div></form>`;
-  const phoneMask = () => `XXXXXX${esc((data.mobile || prepared.mobile).slice(-4))}`;
+  const phoneMask = () => data.mobile ? `XXXXXX${esc(data.mobile.slice(-4))}` : '';
   const emailMask = () => {
-    const [name, domain] = (data.email || prepared.email).split('@');
-    return esc(`${name.slice(0,4)}XXXXX${name.slice(-2)}@${domain || 'gmail.com'}`);
+    const value = data.email || '';
+    const at = value.lastIndexOf('@');
+    if (at < 1) return esc(value);
+    return esc(`${value.slice(0, Math.min(3, at))}***${value.slice(at)}`);
   };
   const activeChannel = () => state.route === 'email-otp' ? 'email' : 'mobile';
 
@@ -285,24 +287,21 @@
 
   const reportTable = rows => `<table class="report-table"><tbody>${rows.map(([label,value]) => `<tr><th scope="row">${esc(label)}</th><td>${esc(value)}</td></tr>`).join('')}</tbody></table>`;
   const reportCard = (name,body) => `<section class="report-card"><h2>${name}</h2><div class="report-body">${body}</div></section>`;
-  const fullName = () => `${data.firstName || prepared.firstName} ${data.lastName || prepared.lastName}`;
+  const fullName = () => [data.firstName, data.lastName].filter(Boolean).join(' ') || '—';
+  const entered = name => data[name] || '—';
 
   function renderCKYC() {
-    main.innerHTML = `<section class="screen report-screen">${title('CKYC Report','Please check the report to proceed ahead')}${reportCard('APPLICANT CKYC DETAILS',`<div class="report-photo">${asset('portrait.jpg','Applicant photograph','width="84" height="116"')}</div>${reportTable([['Entity Type','Individual'],['Account Type','New'],['CKYC ID','5614287619287182'],['Applicant’s Name',fullName()]])}`)}${reportCard('APPLICANT DETAILS',`<h3 class="table-heading">Full Name</h3>${reportTable([['Applicant Name',fullName()],['Maiden Name','Kumar'],['Father’s Name','Devendra Nath Rai'],['Mother’s Name','Kavita Rai'],['Date of Birth',data.birthDate || prepared.birthDate],['Gender',data.gender || prepared.gender]])}`)}${reportCard('CONTACT DETAILS',reportTable([['Mobile Number',data.mobile || prepared.mobile],['Email ID',data.email || prepared.email],['Current Address',data.currentAddress || prepared.currentAddress],['Permanent Address',data.permanentAddress || prepared.permanentAddress]]))}${reportCard('IDENTITY DETAILS',reportTable([['PAN Number',data.pan || prepared.pan],['CKYC Status','Verified']]))}</section>`;
+    main.innerHTML = `<section class="screen report-screen">${title('CKYC Report','Please check the report to proceed ahead')}${reportCard('APPLICANT CKYC DETAILS',`<div class="report-photo">${camera.still ? `<img src="${camera.still}" alt="Applicant photograph" width="84" height="116">` : ''}</div>${reportTable([['Entity Type','Individual'],['Account Type','New'],['Application Number',state.applicationNumber],['Applicant’s Name',fullName()]])}`)}${reportCard('APPLICANT DETAILS',reportTable([['Applicant Name',fullName()],['Date of Birth',entered('birthDate')],['Gender',entered('gender')]]))}${reportCard('CONTACT DETAILS',reportTable([['Mobile Number',entered('mobile')],['Email ID',entered('email')],['Current Address',entered('currentAddress')],['Permanent Address',entered('permanentAddress')]]))}${reportCard('IDENTITY DETAILS',reportTable([['PAN Number',entered('pan')],['CKYC Status','Completed']]))}</section>`;
     setFooter(button('Proceed','kyc-report'));
   }
 
   function renderKYC() {
-    const comparisons = [
-      ['Full Name','99%',fullName(),fullName()],['Father’s Name','12%','Ramesh Kumar','Ram Kumar'],
-      ['Date of Birth','Yes',data.birthDate || prepared.birthDate,data.birthDate || prepared.birthDate],
-      ['Gender','Yes',data.gender || prepared.gender,data.gender || prepared.gender],
-      ['Current Address','82%',data.currentAddress || '2100, Mandal Das Bhuvan, Bori Bunder','2100, Mandal Das Bhuvan, Bori Bunder'],
-      ['Permanent Address','45%',data.permanentAddress || '2100, Mandal Das Bhuvan, Mori Bund','210, Mandal Das Bhuvan, Bori Bunder'],
-      ['Mobile Number','Yes',data.mobile || '8127368291',data.mobile || '8127368291'],
-      ['Email ID','Yes',data.email || 'alokk@gmail.com',data.email || 'alokk@gmail.com']
+    const submitted = [
+      ['Full Name',fullName()],['Date of Birth',entered('birthDate')],['Gender',entered('gender')],
+      ['Current Address',entered('currentAddress')],['Permanent Address',entered('permanentAddress')],
+      ['Mobile Number',entered('mobile')],['Email ID',entered('email')]
     ];
-    main.innerHTML = `<section class="screen report-screen">${title('KYC Report','Please check the report to proceed ahead')}${reportCard('CUSTOMER DETAILS',comparisons.map(([label,score,application,ckyc]) => `<details class="match-detail" open><summary>${esc(label)}<span class="match-score ${score==='12%' ? 'low' : score==='45%' ? 'medium' : ''}">${score}</span></summary>${reportTable([['on Application Form',application],['on CKYC Data',ckyc]])}</details>`).join(''))}${reportCard('FACE MATCH WITH CKYC DATA',`<div class="report-images"><figure>${camera.still ? capturedFrame('Photo on application form','width="136" height="110"') : asset('face-match-application.jpg','Photo on application form','width="136" height="110"')}</figure><figure>${asset('face-match-ckyc.jpg','Photo on CKYC data','width="136" height="110"')}</figure></div>${reportTable([['Face Match Score','93.32'],['Is Face Matching','Yes']])}`)}${reportCard('LOCATION DETAILS',reportTable(content.location))}${reportCard('IP DETAILS',reportTable([['IP Address','Low Risk'],['Proxy/VPN','Not Detected'],['Country','India']]))}${reportCard('DISTANCE CHECK',['Permanent','Current'].map(type => `<div class="distance-block"><p>Latitude 19.315978 | Longitude 77.155200</p><div class="distance-line"></div><span>Distance</span><strong>90.2 kms</strong><div class="distance-line short"></div><span>Given ${type} Address</span><p class="address">A-503, Vikas Apartment, Goregaon (E),<br>Mumbai, Maharashtra, India - 400022</p></div>`).join(''))}${reportCard('VERIFICATION',reportTable([['Liveness Status','Verified'],['CKYC Status','Verified']]))}${reportCard('SOURCE OF FETCHED DATA',reportTable([['PAN Data','CKYC'],['Aadhaar Data','CKYC']]))}</section>`;
+    main.innerHTML = `<section class="screen report-screen">${title('KYC Report','Please check the report to proceed ahead')}${reportCard('CUSTOMER DETAILS',reportTable(submitted))}${reportCard('IDENTITY DETAILS',reportTable([['PAN Number',entered('pan')],['Date of Birth',entered('panBirthDate')]]))}${camera.still ? reportCard('APPLICANT PHOTOGRAPH',`<div class="report-images"><figure><img src="${camera.still}" alt="Photo captured during this journey" width="136" height="110"></figure></div>`) : ''}${reportCard('ADDRESS DETAILS',reportTable([['Current Address',entered('currentAddress')],['Permanent Address',entered('permanentAddress')]]))}${reportCard('VERIFICATION',reportTable([['Liveness Status','Completed'],['CKYC Status','Completed']]))}</section>`;
     setFooter(button('Proceed','complete'));
   }
 
@@ -315,7 +314,7 @@
   function recordingBar() {
     const active = ['pan','pan-processing','ckyc-success','ckyc-report','kyc-report'].includes(state.route);
     if (!active) {bar.innerHTML='';return;}
-    bar.innerHTML = `<div class="recording-bar"><span class="recording-badge">Recording</span><button class="recording-toggle" data-action="toggle-recording" aria-label="${state.recordingExpanded ? 'Collapse' : 'Expand'} video recording frame" aria-expanded="${state.recordingExpanded}">${asset('collapse.png')}</button><span class="network">${asset('network.png')}Network</span></div>${state.recordingExpanded ? `<div class="recording-expanded">${capturedFrame('Video recording frame','width="60" height="76"')}<span>Application Number<strong>${content.applicationNumber}</strong></span><button data-action="toggle-recording" aria-label="Close video recording frame">×</button></div>` : ''}`;
+    bar.innerHTML = `<div class="recording-bar"><span class="recording-badge">Recording</span><button class="recording-toggle" data-action="toggle-recording" aria-label="${state.recordingExpanded ? 'Collapse' : 'Expand'} video recording frame" aria-expanded="${state.recordingExpanded}">${asset('collapse.png')}</button><span class="network">${asset('network.png')}Network</span></div>${state.recordingExpanded ? `<div class="recording-expanded">${capturedFrame('Video recording frame','width="60" height="76"')}<span>Application Number<strong>${state.applicationNumber}</strong></span><button data-action="toggle-recording" aria-label="Close video recording frame">×</button></div>` : ''}`;
   }
 
   const pages = {
@@ -338,7 +337,7 @@
     'camera-denied': () => status('Permission Denied','We could not access your Camera & Microphone permissions. Your session has ended, please try again.',{failure:true,action:'restart-camera',label:'Retry'}),
     failed: () => status(state.failureReason==='pan' ? 'Offline KYC Failed' : 'KYC Failed',state.failureReason==='pan' ? 'You have entered an invalid PAN card number, please retry in some time.' : state.failureReason==='otp' ? 'Maximum attempts reached to verify your OTP. Please start again.' : 'Maximum attempts reached to perform liveness verification, please retry in some time.',{failure:true,action:'restart',label:'Start again'}),
     complete: () => {
-      status('KYC completed successfully',`Your details have been verified.<br><span class="final-id">Application Number<strong>${content.applicationNumber}</strong></span>`,{success:true,action:'restart',label:'Done'});
+      status('KYC completed successfully',`Your details have been verified.<br><span class="final-id">Application Number<strong>${state.applicationNumber}</strong></span>`,{success:true,action:'restart',label:'Done'});
     }
   };
 
@@ -439,18 +438,7 @@
   function verifyOTP() {
     const channel=activeChannel();
     if (!/^\d{6}$/.test(state.otp)) return;
-    const expired=Date.now()-state.otpSentAt[channel]>180000;
-    if (state.otp!==prepared.otp || expired) {
-      state.otpAttempts[channel]++;
-      if (state.otpAttempts[channel]>=3) {state.failureReason='otp';go('failed');return;}
-      state.otpError=expired ? 'OTP has expired, please retry' : 'Incorrect OTP entered, please retry';
-      const feedback=main.querySelector('.otp-feedback');
-      feedback.innerHTML=`${state.otpError}<span class="attempts">${attemptCopy(3-state.otpAttempts[channel])}</span>`;
-      main.querySelectorAll('[data-otp]').forEach(input => input.setAttribute('aria-invalid','true'));
-      // Keep Resend available after an expired or incorrect code.
-      tickOTP();
-      return;
-    }
+    // This presentation journey accepts every six-digit code, including 123456.
     state.otp='';state.otpError='';
     if (channel==='mobile') {state.otpSentAt.email=Date.now();go('email-otp');}
     else go('terms');
@@ -464,15 +452,14 @@
     return date.getFullYear()===year && date.getMonth()===month-1 && date.getDate()===day && year>=1900 && date<=new Date();
   }
   function validationError(name,value) {
-    if (!String(value ?? '').trim()) return 'Please complete this field';
-    if (name==='mobile' && !/^[6-9]\d{9}$/.test(value)) return 'Please enter a valid 10 digit mobile number';
-    if (name==='email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'Please enter a valid email ID';
-    if ((name==='birthDate' || name==='panBirthDate') && !validDate(value)) return 'Please enter a valid date in DD/MM/YYYY format';
-    if (name==='pan' && !/^[A-Z]{5}\d{4}[A-Z]$/.test(value)) return 'Please enter a valid PAN card number';
-    if (name==='karzaKey' && !/^[A-Za-z0-9_-]{12,}$/.test(value)) return 'Please enter a valid key';
-    if (name==='password' && value.length<6) return 'Please enter at least 6 characters';
+    const text = String(value ?? '').trim();
+    if (!text) return 'Please complete this field';
+    if (name==='mobile' && !/^\d{10}$/.test(text)) return 'Please enter 10 digits';
+    if (name==='aadhaar' && !/^\d{12}$/.test(text)) return 'Please enter 12 digits';
+    if (name==='pan' && text.length!==10) return 'Please enter 10 characters';
     return '';
   }
+
   function showFieldError(input) {
     if(!input.name || input.type==='checkbox' || input.dataset.otp!==undefined)return;
     const message=validationError(input.name,input.value);
@@ -486,29 +473,12 @@
     const activeForm=main.querySelector('form');
     if(!activeForm)return;
     if(activeForm.dataset.form==='otp') {submit.disabled=!/^\d{6}$/.test(state.otp);return;}
-    const complete=Array.from(activeForm.querySelectorAll('[required]')).every(input => input.value.trim());
+    const complete=Array.from(activeForm.querySelectorAll('[required]')).every(input => !validationError(input.name,input.value));
     submit.disabled=!complete || (activeForm.dataset.form==='pan' && !data.ckycConsent);
-  }
-
-  // Empty controls fill on the user's first tap. Edited values are never replaced.
-  function prefillField(target) {
-    if (target.closest?.('[data-action]')) return null;
-    const input=target.matches?.('input,select,textarea') ? target : target.closest?.('.field')?.querySelector('input,select,textarea');
-    if(!input || input.disabled || input.readOnly || ['checkbox','radio','range','file'].includes(input.type))return null;
-    if(input.dataset.otp!==undefined) {
-      if(state.otp.length) return null;
-      setOTP(prepared.otp);return input;
-    }
-    if(input.value.trim() || !Object.hasOwn(prepared,input.name))return null;
-    input.value=prepared[input.name];
-    input.dispatchEvent(new Event('input',{bubbles:true}));
-    input.dispatchEvent(new Event('change',{bubbles:true}));
-    return input;
   }
 
   function saveInput(input) {
     if(!input.name || input.dataset.otp!==undefined)return;
-    if(input.name==='pan')input.value=input.value.toUpperCase().replace(/\s/g,'');
     data[input.name]=input.type==='checkbox' ? input.checked : input.value;
     input.closest('.field')?.classList.toggle('filled',!!input.value);
     const error=document.getElementById(`error-${input.name}`);
@@ -546,9 +516,14 @@
 
   function openCalendar(name) {
     state.calendarField=name;
-    const value=data[name] || prepared[name];
-    const [,month,year]=value.split('/').map(Number);
-    state.calendarYear=year;state.calendarMonth=month-1;
+    const value=data[name] || '';
+    const today=new Date();
+    if (validDate(value)) {
+      const [,month,year]=value.split('/').map(Number);
+      state.calendarYear=year;state.calendarMonth=month-1;
+    } else {
+      state.calendarYear=today.getFullYear();state.calendarMonth=today.getMonth();
+    }
     drawCalendar();
   }
   function drawCalendar() {
@@ -587,6 +562,7 @@
     state.otp='';state.otpError='';state.otpAttempts={mobile:0,email:0};state.otpSentAt={mobile:0,email:0};
     state.captureAttempts=0;state.videoAttempts=0;state.hasVideo=false;state.recordingExpanded=false;
     state.locationAllowed=false;state.cameraAllowed=false;state.microphoneAllowed=false;
+    state.applicationNumber=String(Date.now());
     go('login');
   }
 
@@ -645,12 +621,7 @@
       node.setAttribute('aria-pressed',String(state.muted));node.setAttribute('aria-label',state.muted?'Unmute audio':'Mute audio');node.classList.toggle('muted',state.muted);}
   };
 
-  document.addEventListener('pointerdown',event=>{
-    const input=prefillField(event.target);
-    if(input?.tagName==='SELECT'){event.preventDefault();input.focus({preventScroll:true});}
-  });
   document.addEventListener('click',event=>{
-    prefillField(event.target);
     const node=event.target.closest('[data-action]');
     if(node && !node.disabled){event.preventDefault();actions[node.dataset.action]?.(node);}
   });
@@ -659,7 +630,6 @@
     if(input.dataset?.otp!==undefined && event.key==='Backspace' && !input.value) {
       const previous=main.querySelector(`[data-otp="${Number(input.dataset.otp)-1}"]`);previous?.focus();
     }
-    if((event.key===' ' || event.key==='Enter') && input.matches?.('input,select,textarea') && prefillField(input))event.preventDefault();
   });
   document.addEventListener('input',event=>{
     const input=event.target;

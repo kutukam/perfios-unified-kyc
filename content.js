@@ -1,15 +1,5 @@
-/* Prepared interaction values and copy taken from the supplied screen exports.
-   Everything stays in memory; these are not credentials for a live service. */
+/* Journey copy and source artwork descriptions. Personal details are entered by the user. */
 window.JourneyContent = Object.freeze({
-  values: {
-    username: 'alokkumar', password: 'Alok@1234', karzaKey: 'P4tD8MeJ5AbsJR0q',
-    firstName: 'Alok', lastName: 'Kumar', birthDate: '10/09/1985', gender: 'Male',
-    mobile: '8172635410', email: 'alokkumar@gmail.com',
-    currentAddress: '210, Mandal Das Bhuvan, Bori Bunder, Mumbai, Pincode - 324156',
-    permanentAddress: '210, Mandal Das Bhuvan, Bori Bunder, Mumbai, Pincode - 324156',
-    pan: 'BYPPL8716T', panBirthDate: '10/02/1997', otp: '603720'
-  },
-  applicationNumber: '398672035602957905',
   terms: [
     { text: 'By accessing or using this application, you agree to abide by these Terms and Conditions. Please read them carefully to understand your rights and responsibilities during this digital verification process.' },
     { title: 'Introduction', text: 'This application is designed to facilitate a seamless and secure Know Your Customer (KYC) verification process. Perfios provides innovative solutions to simplify KYC compliance, enabling businesses and users to verify identities through a streamlined, secure, and efficient digital journey.\nBy using this platform, you agree to participate in the digital KYC process as mandated by regulatory authorities. This includes, but is not limited to, document verification, liveness checks, and data validation procedures.' },
@@ -28,10 +18,5 @@ window.JourneyContent = Object.freeze({
     'not-live': ['Photo is not live', 'Kindly ensure that the image is clicked in real-time'],
     'multiple-faces': ['Multiple faces detected', 'Kindly ensure that only one face is seen in the photo'],
     'framing': ['Incorrect framing', 'Kindly ensure that your face is positioned as per screen guiding lines']
-  },
-  location: [
-    ['Latitude','19.0115166'],['Longitude','72.7647643'],['Plus Code','2RH3+G65'],
-    ['Area','Lower Parel'],['City','Mumbai'],['Pincode','400026'],['District','Mumbai City'],
-    ['State','Maharashtra'],['Country','India'],['IP Address','103.240.13']
-  ]
+  }
 });
