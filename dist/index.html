@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; worker-src 'self' blob:; media-src 'self' blob:; connect-src 'self' blob: https://cobrowse.unikernel.ai wss://cobrowse.unikernel.ai https://apps.sarvam.ai wss://apps.sarvam.ai https://*.sarvam.ai wss://*.sarvam.ai; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="description" content="Unified KYC — a seamless identity verification journey.">
+  <title>Unified KYC | Perfios</title>
+  <link rel="icon" href="./assets/perfios-logo.png" type="image/png">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./content.js" defer></script>
+  <script src="./app.js" defer></script>
+  <!-- Guided assistance. Both vendor bundles are local files, so script-src stays 'self';
+       refresh them with `npm run build:vendor`. assist.js is inert until the customer
+       either arrives on an assistant's ?cb= link or presses the help button. -->
+  <script src="./vendor/cobrowse.js" defer></script>
+  <script src="./vendor/sarvam.js" defer></script>
+  <script src="./assist.js" defer></script>
+</head>
+<body>
+  <div class="application" id="application">
+    <header class="brand-header"><img src="./assets/perfios-logo.png" width="72" height="22" alt="Perfios"></header>
+    <div id="recording-bar"></div>
+    <main id="main" tabindex="-1"></main>
+    <footer id="footer"></footer>
+    <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+  <noscript><p class="no-script">Please enable JavaScript to continue your KYC journey.</p></noscript>
+</body>
+</html>
