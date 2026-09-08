@@ -259,6 +259,7 @@
   async function openSession(signal) {
     if (browse?.status() === 'active') return code.split('_')[0];
     if (browseReady) return browseReady;
+    if (!code) code = initialReference;
     if (!code) {
       const created = await postJSON(`${endpoint}/api/session`, { site: SITE }, signal);
       if (signal.aborted) throw new Error('cancelled');
@@ -354,10 +355,8 @@
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(measureDock).observe(dock);
   else window.addEventListener('resize', measureDock);
 
-  if (initialReference) {
-    const linkedAttempt = browseGeneration + 1;
-    void startCoBrowse(initialReference).catch(error => {
-      if (linkedAttempt === browseGeneration && code) void stop(error.message);
-    });
-  }
+  /* Deliberately nothing here. Arriving on an assistant's ?cb= link supplies the
+     session reference but does NOT start assistance: the customer presses the
+     microphone first, so no page ever begins highlighting itself unprompted. The
+     reference is still honoured — openSession() binds to it instead of minting. */
 })();
