@@ -242,14 +242,32 @@ test('all screens have local assets, valid actions, and correctly attached submi
 });
 
 test('frontend has no real API, storage, camera, location, or network clients',()=>{
-  assert.doesNotMatch(source,/\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|getUserMedia|navigator\.geolocation|localStorage|sessionStorage|document\.cookie/);
+  assert.doesNotMatch(source,/\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|navigator\.geolocation|localStorage|sessionStorage|document\.cookie/);
+  // The camera IS real. What must stay true is that it is only ever opened for a screen
+  // that needs it and always handed back — a preview left running keeps the recording
+  // light on for the rest of the journey.
+  assert.match(source,/getUserMedia/);
+  assert.match(source,/getTracks\(\)\.forEach\(track => track\.stop\(\)\)/);
+  assert.match(source,/\} else camera\.release\(\);/);
+  assert.match(source,/pagehide[\s\S]{0,120}camera\.release\(\)/);
+  // ...and that a failure to open one is survivable: every screen falls back to the
+  // supplied artwork rather than breaking a demo on a machine with no webcam.
+  assert.match(source,/camera\.live\(\)\s*\n?\s*\?/);
   const index=readFileSync(root+'dist/index.html','utf8');
   const connect=index.match(/connect-src ([^;]+);/)[1].split(/\s+/);
   assert.deepEqual(connect.sort(),[
     "'self'",'blob:',
-    'https://*.sarvam.ai','https://apps.sarvam.ai','https://cobrowse.unikernel.ai',
-    'wss://*.sarvam.ai','wss://apps.sarvam.ai','wss://cobrowse.unikernel.ai'
+    'https://cobrowse-do.harshkhandelwal8553.workers.dev','wss://cobrowse-do.harshkhandelwal8553.workers.dev',
+    'https://cobrowse.unikernel.ai','wss://cobrowse.unikernel.ai',
+    'https://*.sarvam.ai','https://apps.sarvam.ai',
+    'wss://*.sarvam.ai','wss://apps.sarvam.ai'
   ].sort());
+  // Whichever worker the page is pointed at must be named with BOTH schemes: miss the
+  // wss: origin and the script still loads, init() still resolves, and the socket is
+  // silently blocked.
+  const worker = readFileSync(root+'dist/assist.js','utf8').match(/const WORKER = '([^']+)'/)[1];
+  assert.ok(connect.includes(worker), `connect-src is missing ${worker}`);
+  assert.ok(connect.includes(worker.replace('https://','wss://')), `connect-src is missing the wss: origin for ${worker}`);
   for(const [,path] of index.matchAll(/(?:src|href)="(\.\/[^"#]+)"/g))assert.ok(existsSync(root+'dist/'+path),path);
 });
 

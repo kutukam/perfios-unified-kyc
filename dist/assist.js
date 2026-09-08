@@ -25,7 +25,7 @@
 (() => {
   'use strict';
 
-  const WORKER = 'https://cobrowse.unikernel.ai';
+  const WORKER = 'https://cobrowse-do.harshkhandelwal8553.workers.dev';
   const TENANT = 'perfios';
   const SITE = 'perfios-unified-kyc';   // which published journey the assistant guides
 
@@ -71,7 +71,7 @@
   //
   // Either way `code` is what the assistant is given, and it is the only thing that
   // lets it see this screen.
-  const endpoint = endpointOverride();
+  const endpoint = endpointOverride() || WORKER;
   let code = cobrowseCode();
 
   function startCoBrowse(sessionRef) {

@@ -106,8 +106,119 @@
     setFooter(button(`${asset('camera-white.png')}Open Camera`,'video-permission'));
   }
 
+  /* ── The camera ───────────────────────────────────────────────────────────
+     The selfie and liveness steps use the real device camera. One stream,
+     opened when a capture screen needs it and released the moment the journey
+     leaves one, so the recording light is never on for a screen that is not
+     recording. The clip the customer confirms is the clip they just recorded,
+     played back with its own audio.
+
+     Every entry point is guarded and every failure is silent: where there is no
+     camera API — an older browser, a machine without a webcam, the test fixture
+     — the screens fall back to the supplied artwork and the journey still runs
+     end to end. A demo that dies because a laptop has no camera is worse than
+     one that shows a photograph. */
+  const CAPTURE_ROUTES = new Set(['selfie-capture','recording-consent','video-ready','video-recording']);
+  const CLIP_TYPES = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'];
+  const camera = {
+    stream:null, recorder:null, chunks:[], clip:'', still:'',
+    live() {
+      return typeof navigator !== 'undefined'
+        && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    },
+    async open() {
+      if (!this.live()) return false;
+      if (this.stream) return true;
+      try {
+        // Audio too: the liveness step asks them to read digits out loud, and the
+        // permission sheet this app shows says camera AND microphone.
+        this.stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});
+      } catch {
+        return false;
+      }
+      return true;
+    },
+    /** Point every preview on the current screen at the live stream. */
+    show() {
+      if (!this.stream) return;
+      main.querySelectorAll('.camera-view').forEach(node => {
+        if (node.srcObject === this.stream) return;
+        node.srcObject = this.stream;
+        const started = node.play && node.play();
+        if (started && started.catch) started.catch(() => {});
+      });
+    },
+    /** Keep one frame, so the recording bar and the report show the face that was
+     *  actually captured rather than a stock portrait. */
+    grabStill() {
+      try {
+        const node = main.querySelector('.camera-view');
+        if (!node || !node.videoWidth) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = node.videoWidth;
+        canvas.height = node.videoHeight;
+        const context = canvas.getContext('2d');
+        // The preview is mirrored so it reads like a mirror; the saved frame is not.
+        context.translate(canvas.width,0);
+        context.scale(-1,1);
+        context.drawImage(node,0,0);
+        this.still = canvas.toDataURL('image/jpeg',.82);
+      } catch { /* keep the supplied artwork */ }
+    },
+    record() {
+      if (!this.stream || typeof MediaRecorder === 'undefined') return;
+      const type = CLIP_TYPES.find(candidate => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(candidate));
+      try {
+        this.recorder = new MediaRecorder(this.stream, type ? {mimeType:type} : undefined);
+      } catch {
+        this.recorder = null;
+        return;
+      }
+      const recorder = this.recorder;
+      this.chunks = [];
+      recorder.ondataavailable = event => {if (event.data && event.data.size) this.chunks.push(event.data);};
+      recorder.onstop = () => {
+        try {
+          if (this.clip) URL.revokeObjectURL(this.clip);
+          this.clip = this.chunks.length
+            ? URL.createObjectURL(new Blob(this.chunks,{type:recorder.mimeType || 'video/webm'}))
+            : '';
+        } catch {
+          this.clip = '';
+        }
+        this.chunks = [];
+      };
+      try {recorder.start();} catch {this.recorder = null;}
+    },
+    stopRecording() {
+      try {
+        if (this.recorder && this.recorder.state === 'recording') this.recorder.stop();
+      } catch { /* already stopped */ }
+      this.recorder = null;
+    },
+    release() {
+      this.stopRecording();
+      try {
+        if (this.stream) this.stream.getTracks().forEach(track => track.stop());
+      } catch { /* already gone */ }
+      this.stream = null;
+    },
+    forget() {
+      this.release();
+      try {if (this.clip) URL.revokeObjectURL(this.clip);} catch { /* nothing to revoke */ }
+      this.clip = '';
+      this.still = '';
+    }
+  };
+  /** The frame this journey actually captured, or the supplied artwork. */
+  const capturedFrame = (alt,extra) => camera.still
+    ? `<img src="${esc(camera.still)}" alt="${esc(alt)}" ${extra || ''}>`
+    : asset('portrait.jpg',alt,extra);
+
   function renderSelfie() {
-    main.innerHTML = `<section class="screen selfie-screen"><div class="selfie-oval">${asset('selfie-frame.png','Face positioned inside the capture frame','width="288" height="400"')}</div><p class="selfie-status" role="status" aria-live="polite">Ensure your face is<br>inside the frame</p></section>`;
+    main.innerHTML = `<section class="screen selfie-screen"><div class="selfie-oval">${camera.live()
+      ? '<video class="camera-view" playsinline muted autoplay aria-label="Camera preview"></video>'
+      : asset('selfie-frame.png','Face positioned inside the capture frame','width="288" height="400"')}</div><p class="selfie-status" role="status" aria-live="polite">Ensure your face is<br>inside the frame</p></section>`;
     setFooter('',true);
     later(() => {
       main.querySelector('.selfie-oval').classList.add('aligned');
@@ -117,16 +228,20 @@
       main.querySelector('.selfie-oval').classList.add('ready');
       main.querySelector('.selfie-status').innerHTML = 'Perfect! Stay still<br>for 3 seconds...';
     },2600);
-    later(() => go('selfie-processing'),5600);
+    later(() => {camera.grabStill();go('selfie-processing');},5600);
   }
 
   function renderConsent() {
-    main.innerHTML = `<section class="screen consent-screen">${title('Video Recording Consent','We will be recording you during the KYC journey for audit purposes, so position it correctly within the frame throughout the journey.')}${asset('portrait.jpg','Captured portrait preview','class="portrait" width="320" height="440"')}</section>`;
+    main.innerHTML = `<section class="screen consent-screen">${title('Video Recording Consent','We will be recording you during the KYC journey for audit purposes, so position it correctly within the frame throughout the journey.')}${camera.live()
+      ? '<video class="portrait camera-view" playsinline muted autoplay aria-label="Camera preview"></video>'
+      : asset('portrait.jpg','Captured portrait preview','class="portrait" width="320" height="440"')}</section>`;
     setFooter(button('Continue','video-ready'));
   }
 
   function renderVideo(ready = false) {
-    main.innerHTML = `<section class="screen recording-screen">${asset('portrait.jpg','Video recording preview','class="recording-image" width="320" height="440"')}${ready ? '' : '<span class="recording-badge" id="record-time">Rec 00:00</span>'}</section>`;
+    main.innerHTML = `<section class="screen recording-screen">${camera.live()
+      ? '<video class="recording-image camera-view" playsinline muted autoplay aria-label="Camera preview"></video>'
+      : asset('portrait.jpg','Video recording preview','class="recording-image" width="320" height="440"')}${ready ? '' : '<span class="recording-badge" id="record-time">Rec 00:00</span>'}</section>`;
     setFooter(`<div class="recording-controls">${ready ? '<h2>Help us verify it’s you</h2><p>We will be recording you for this, click on start and read the number out loud in 10 seconds</p>' : '<h1>4-8-7-6</h1><p>Please click on the stop button once you are done reading the numbers</p>'}</div>${button(ready ? 'Start' : 'Stop',ready ? 'start-recording' : 'stop-recording',{className:ready ? '' : 'stop'})}`);
     if (!ready) {
       const started = Date.now();
@@ -142,8 +257,19 @@
   function renderConfirmVideo() {
     state.playing = false;
     state.playTime = 0;
-    main.innerHTML = `<section class="screen video-confirm">${title('Confirm Captured Video','Please make sure the audio and video captured is clear to understand')}<div class="video-player">${asset('portrait.jpg','Captured video preview','width="320" height="456"')}<button class="sound-button" data-action="mute" aria-label="Mute audio" aria-pressed="false">${asset('sound.png','','width="18" height="18"')}</button><button class="play-button" data-action="play" aria-label="Play captured video">${asset('play.png','','width="12" height="12"')}</button><div class="player-controls"><span id="play-time">00:00</span><input id="play-progress" type="range" min="0" max="12" step="0.1" value="0" aria-label="Video position"><span>00:12</span></div></div></section>`;
+    main.innerHTML = `<section class="screen video-confirm">${title('Confirm Captured Video','Please make sure the audio and video captured is clear to understand')}<div class="video-player">${camera.clip
+      ? `<video id="clip" playsinline preload="metadata" src="${esc(camera.clip)}" aria-label="Captured video"></video>`
+      : asset('portrait.jpg','Captured video preview','width="320" height="456"')}<button class="sound-button" data-action="mute" aria-label="Mute audio" aria-pressed="false">${asset('sound.png','','width="18" height="18"')}</button><button class="play-button" data-action="play" aria-label="Play captured video">${asset('play.png','','width="12" height="12"')}</button><div class="player-controls"><span id="play-time">00:00</span><input id="play-progress" type="range" min="0" max="12" step="0.1" value="0" aria-label="Video position"><span id="play-total">00:12</span></div></div></section>`;
     setFooter(`<div class="row">${button('Retake','retake-video',{className:'outline'})}${button('Confirm','confirm-video')}</div>`);
+    const clip = main.querySelector('#clip');
+    if (clip) {
+      clip.muted = state.muted;
+      // The element owns the clock now; the simulated ticker below is only for the
+      // fallback still, which has no clock of its own.
+      ['loadedmetadata','timeupdate','play','pause','ended'].forEach(event => clip.addEventListener(event,updatePlayer));
+      updatePlayer();
+      return;
+    }
     repeat(() => {
       if (!state.playing) return;
       state.playTime = Math.min(12,state.playTime+.1);
@@ -176,7 +302,7 @@
       ['Mobile Number','Yes',data.mobile || '8127368291',data.mobile || '8127368291'],
       ['Email ID','Yes',data.email || 'alokk@gmail.com',data.email || 'alokk@gmail.com']
     ];
-    main.innerHTML = `<section class="screen report-screen">${title('KYC Report','Please check the report to proceed ahead')}${reportCard('CUSTOMER DETAILS',comparisons.map(([label,score,application,ckyc]) => `<details class="match-detail" open><summary>${esc(label)}<span class="match-score ${score==='12%' ? 'low' : score==='45%' ? 'medium' : ''}">${score}</span></summary>${reportTable([['on Application Form',application],['on CKYC Data',ckyc]])}</details>`).join(''))}${reportCard('FACE MATCH WITH CKYC DATA',`<div class="report-images"><figure>${asset('face-match-application.jpg','Photo on application form','width="136" height="110"')}</figure><figure>${asset('face-match-ckyc.jpg','Photo on CKYC data','width="136" height="110"')}</figure></div>${reportTable([['Face Match Score','93.32'],['Is Face Matching','Yes']])}`)}${reportCard('LOCATION DETAILS',reportTable(content.location))}${reportCard('IP DETAILS',reportTable([['IP Address','Low Risk'],['Proxy/VPN','Not Detected'],['Country','India']]))}${reportCard('DISTANCE CHECK',['Permanent','Current'].map(type => `<div class="distance-block"><p>Latitude 19.315978 | Longitude 77.155200</p><div class="distance-line"></div><span>Distance</span><strong>90.2 kms</strong><div class="distance-line short"></div><span>Given ${type} Address</span><p class="address">A-503, Vikas Apartment, Goregaon (E),<br>Mumbai, Maharashtra, India - 400022</p></div>`).join(''))}${reportCard('VERIFICATION',reportTable([['Liveness Status','Verified'],['CKYC Status','Verified']]))}${reportCard('SOURCE OF FETCHED DATA',reportTable([['PAN Data','CKYC'],['Aadhaar Data','CKYC']]))}</section>`;
+    main.innerHTML = `<section class="screen report-screen">${title('KYC Report','Please check the report to proceed ahead')}${reportCard('CUSTOMER DETAILS',comparisons.map(([label,score,application,ckyc]) => `<details class="match-detail" open><summary>${esc(label)}<span class="match-score ${score==='12%' ? 'low' : score==='45%' ? 'medium' : ''}">${score}</span></summary>${reportTable([['on Application Form',application],['on CKYC Data',ckyc]])}</details>`).join(''))}${reportCard('FACE MATCH WITH CKYC DATA',`<div class="report-images"><figure>${camera.still ? capturedFrame('Photo on application form','width="136" height="110"') : asset('face-match-application.jpg','Photo on application form','width="136" height="110"')}</figure><figure>${asset('face-match-ckyc.jpg','Photo on CKYC data','width="136" height="110"')}</figure></div>${reportTable([['Face Match Score','93.32'],['Is Face Matching','Yes']])}`)}${reportCard('LOCATION DETAILS',reportTable(content.location))}${reportCard('IP DETAILS',reportTable([['IP Address','Low Risk'],['Proxy/VPN','Not Detected'],['Country','India']]))}${reportCard('DISTANCE CHECK',['Permanent','Current'].map(type => `<div class="distance-block"><p>Latitude 19.315978 | Longitude 77.155200</p><div class="distance-line"></div><span>Distance</span><strong>90.2 kms</strong><div class="distance-line short"></div><span>Given ${type} Address</span><p class="address">A-503, Vikas Apartment, Goregaon (E),<br>Mumbai, Maharashtra, India - 400022</p></div>`).join(''))}${reportCard('VERIFICATION',reportTable([['Liveness Status','Verified'],['CKYC Status','Verified']]))}${reportCard('SOURCE OF FETCHED DATA',reportTable([['PAN Data','CKYC'],['Aadhaar Data','CKYC']]))}</section>`;
     setFooter(button('Proceed','complete'));
   }
 
@@ -189,7 +315,7 @@
   function recordingBar() {
     const active = ['pan','pan-processing','ckyc-success','ckyc-report','kyc-report'].includes(state.route);
     if (!active) {bar.innerHTML='';return;}
-    bar.innerHTML = `<div class="recording-bar"><span class="recording-badge">Recording</span><button class="recording-toggle" data-action="toggle-recording" aria-label="${state.recordingExpanded ? 'Collapse' : 'Expand'} video recording frame" aria-expanded="${state.recordingExpanded}">${asset('collapse.png')}</button><span class="network">${asset('network.png')}Network</span></div>${state.recordingExpanded ? `<div class="recording-expanded">${asset('portrait.jpg','Video recording frame','width="60" height="76"')}<span>Application Number<strong>${content.applicationNumber}</strong></span><button data-action="toggle-recording" aria-label="Close video recording frame">×</button></div>` : ''}`;
+    bar.innerHTML = `<div class="recording-bar"><span class="recording-badge">Recording</span><button class="recording-toggle" data-action="toggle-recording" aria-label="${state.recordingExpanded ? 'Collapse' : 'Expand'} video recording frame" aria-expanded="${state.recordingExpanded}">${asset('collapse.png')}</button><span class="network">${asset('network.png')}Network</span></div>${state.recordingExpanded ? `<div class="recording-expanded">${capturedFrame('Video recording frame','width="60" height="76"')}<span>Application Number<strong>${content.applicationNumber}</strong></span><button data-action="toggle-recording" aria-label="Close video recording frame">×</button></div>` : ''}`;
   }
 
   const pages = {
@@ -238,6 +364,10 @@
       status('Please be patient','Uploading your Selfie at the best resolution possible');
       later(() => captureError(detail || 'no-face'),20);
     } else pages[state.route]();
+    if (CAPTURE_ROUTES.has(state.route)) {
+      if (camera.stream) camera.show();
+      else camera.open().then(ok => {if (ok && CAPTURE_ROUTES.has(state.route)) camera.show();});
+    } else camera.release();
     document.title = `${main.querySelector('h1')?.textContent || 'Unified KYC'} | Perfios`;
     main.scrollTop=0;
     (main.querySelector('h1') || main).focus({preventScroll:true});
@@ -279,6 +409,7 @@
   }
   function videoTimeout() {
     clearTimers();
+    camera.stopRecording();
     state.videoAttempts++;
     if (state.videoAttempts>=3) {state.failureReason='liveness';go('failed');return;}
     openDialog('Please try again','You took too long to read out the numbers, please try again',button('Retry','retry-video'),`<span class="attempts">${attemptCopy(3-state.videoAttempts)}</span>`);
@@ -437,13 +568,21 @@
   function updatePlayer() {
     const play=main.querySelector('[data-action="play"]');
     if(!play)return;
-    play.innerHTML=state.playing ? '<span aria-hidden="true">Ⅱ</span>' : asset('play.png','','width="12" height="12"');
-    play.setAttribute('aria-label',state.playing ? 'Pause captured video' : 'Play captured video');
-    main.querySelector('#play-progress').value=state.playTime;
-    main.querySelector('#play-time').textContent=`00:${String(Math.floor(state.playTime)).padStart(2,'0')}`;
+    const clip=main.querySelector('#clip');
+    const playing=clip ? !clip.paused && !clip.ended : state.playing;
+    const at=clip ? clip.currentTime || 0 : state.playTime;
+    const length=clip ? (isFinite(clip.duration) ? clip.duration : 0) : 12;
+    play.innerHTML=playing ? '<span aria-hidden="true">Ⅱ</span>' : asset('play.png','','width="12" height="12"');
+    play.setAttribute('aria-label',playing ? 'Pause captured video' : 'Play captured video');
+    const progress=main.querySelector('#play-progress');
+    if(progress){if(clip)progress.max=String(Math.max(length,.1));progress.value=at;}
+    main.querySelector('#play-time').textContent=`00:${String(Math.floor(at)).padStart(2,'0')}`;
+    const total=main.querySelector('#play-total');
+    if(total && clip)total.textContent=`00:${String(Math.floor(length)).padStart(2,'0')}`;
   }
 
   function restart() {
+    camera.forget();
     for(const key of Object.keys(data))delete data[key];
     state.otp='';state.otpError='';state.otpAttempts={mobile:0,email:0};state.otpSentAt={mobile:0,email:0};
     state.captureAttempts=0;state.videoAttempts=0;state.hasVideo=false;state.recordingExpanded=false;
@@ -457,12 +596,24 @@
     'allow-location':()=>{state.locationAllowed=true;go('location-processing');},
     'deny-location':()=>go('location-denied'),
     'selfie-permission':()=>cameraPermission('selfie'), 'video-permission':()=>cameraPermission('video'),
-    'allow-camera':()=>{state.cameraAllowed=true;state.microphoneAllowed=true;go(data.captureMode==='selfie' ? 'selfie-capture' : 'recording-consent');},
+    'allow-camera':async ()=>{
+      // The dialog is the app's own; this is where the device is actually asked. A
+      // refusal at the OS level lands on the same denied screen as refusing here,
+      // which is honest: the journey cannot continue without a camera.
+      if (camera.live() && !await camera.open()) {go('camera-denied');return;}
+      state.cameraAllowed=true;state.microphoneAllowed=true;
+      go(data.captureMode==='selfie' ? 'selfie-capture' : 'recording-consent');
+    },
     'deny-camera':()=>go('camera-denied'),
     'restart-camera':()=>go(data.captureMode==='video' ? 'video-intro' : 'selfie-intro'),
     'retry-selfie':()=>go('selfie-capture'), 'retry-video':()=>go('video-ready'),
-    'video-ready':()=>go('video-ready'), 'start-recording':()=>go('video-recording'),
-    'stop-recording':()=>{state.hasVideo=true;go('video-confirm');},
+    'video-ready':()=>go('video-ready'), 'start-recording':()=>{camera.record();go('video-recording');},
+    'stop-recording':()=>{
+      camera.grabStill();          // while the live preview is still on screen
+      camera.stopRecording();
+      state.hasVideo=true;
+      go('video-confirm');
+    },
     'retake-video':()=>go('video-ready'), 'confirm-video':()=>go('video-processing'),
     'toggle-recording':()=>{state.recordingExpanded=!state.recordingExpanded;recordingBar();},
     'kyc-report':()=>go('kyc-report'), complete:()=>go('complete'),restart,
@@ -478,8 +629,20 @@
       if(Date.now()-state.otpSentAt[channel]<23000)return;
       state.otpSentAt[channel]=Date.now();setOTP('');tickOTP();toast('A new verification code has been sent');
     },
-    play:()=>{if(state.playTime>=12)state.playTime=0;state.playing=!state.playing;updatePlayer();},
-    mute:node=>{state.muted=!state.muted;node.setAttribute('aria-pressed',String(state.muted));node.setAttribute('aria-label',state.muted?'Unmute audio':'Mute audio');node.classList.toggle('muted',state.muted);}
+    play:()=>{
+      const clip=main.querySelector('#clip');
+      if(clip){
+        if(clip.ended)clip.currentTime=0;
+        if(clip.paused){const started=clip.play();if(started&&started.catch)started.catch(()=>{});}
+        else clip.pause();
+        updatePlayer();return;
+      }
+      if(state.playTime>=12)state.playTime=0;state.playing=!state.playing;updatePlayer();
+    },
+    mute:node=>{state.muted=!state.muted;
+      const clip=main.querySelector('#clip');
+      if(clip)clip.muted=state.muted;
+      node.setAttribute('aria-pressed',String(state.muted));node.setAttribute('aria-label',state.muted?'Unmute audio':'Mute audio');node.classList.toggle('muted',state.muted);}
   };
 
   document.addEventListener('pointerdown',event=>{
@@ -508,7 +671,11 @@
       if(input.value)inputs[Number(input.dataset.otp)+1]?.focus();
       updateSubmit();return;
     }
-    if(input.id==='play-progress'){state.playTime=Number(input.value);updatePlayer();return;}
+    if(input.id==='play-progress'){
+      const clip=main.querySelector('#clip');
+      if(clip)clip.currentTime=Number(input.value); else state.playTime=Number(input.value);
+      updatePlayer();return;
+    }
     saveInput(input);
   });
   document.addEventListener('change',event=>saveInput(event.target));
@@ -523,6 +690,6 @@
   document.addEventListener('submit',submitForm);
   dialog.addEventListener('cancel',event=>{event.preventDefault();closeDialog();});
   window.addEventListener('hashchange',render);
-  window.addEventListener('pagehide',()=>{clearTimers();clearTimeout(toastTimer);});
+  window.addEventListener('pagehide',()=>{clearTimers();clearTimeout(toastTimer);camera.release();});
   render();
 })();
