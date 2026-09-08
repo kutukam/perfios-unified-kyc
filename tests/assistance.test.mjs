@@ -58,9 +58,19 @@ test('declined consent never mints a voice token and retry gets a fresh screen s
   assert.doesNotMatch(f.mic.className,/is-busy|is-live/);assert.equal(f.error.hidden,false);
   await f.click();assert.equal(f.requests.length,2);assert.equal(f.browsers.length,2);
 });
-test('a linked screen session retains an End control before voice is started',async()=>{
-  const f=fixture({search:'?cb=linked_secret'});await f.flush();assert.equal(f.requests.length,0);await f.accept();
-  assert.equal(f.status.hidden,false);assert.equal(f.voices.length,0);await f.end();assert.equal(f.status.hidden,true);assert.equal(f.browsers[0].ends,1);
+test('an assistant link supplies the session but does not start assistance',async()=>{
+  const f=fixture({search:'?cb=linked_secret'});await f.flush();
+  assert.equal(f.requests.length,0);                     // no session minted
+  assert.equal(f.browsers.length,0);                     // and none started either
+  assert.equal(f.voices.length,0);
+  assert.equal(f.status.hidden,true);                    // nothing on screen to end
+  // Pressing the microphone binds to the reference from the URL rather than minting a new
+  // session — a linked customer must land in the session the assistant is already watching.
+  await f.click();await f.accept();
+  assert.equal(f.requests.filter(r=>String(r.url).endsWith('/api/session')).length,0,
+    'a linked session must not be re-minted');
+  assert.equal(f.browsers.length,1);
+  await f.end();assert.equal(f.browsers[0].ends,1);
 });
 test('late permission after cancellation cannot resurrect an old voice session',async()=>{
   const f=fixture({pendingVoice:true});await f.click();await f.accept();const old=f.voices[0];
