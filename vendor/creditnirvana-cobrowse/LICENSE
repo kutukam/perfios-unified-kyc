@@ -1,0 +1,11 @@
+Copyright (c) 2026 CreditNirvana. All rights reserved.
+
+This package is provided to the recipient organisation under the terms of the
+evaluation agreement between CreditNirvana and that organisation. Installing the
+package from the npm registry, and reproducing it as part of a build of the
+recipient's application, is permitted solely for the purposes and for the term
+set out in that agreement.
+
+No other rights are granted. The package may not be redistributed, sublicensed,
+published, or used outside the scope of the evaluation agreement. For production
+licensing, contact CreditNirvana.

@@ -1,0 +1,22 @@
+{
+  "name": "@creditnirvana/cobrowse",
+  "description": "Guided assistance for web journeys. An assistant sees the structure of the page, never its contents, and highlights the next step for the customer.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "main": "./dist/cobrowse.js",
+  "module": "./dist/cobrowse.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "version": "0.5.1-ipad-ring-fix",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/cobrowse.js",
+      "default": "./dist/cobrowse.js"
+    },
+    "./global": "./dist/cobrowse.global.js"
+  }
+}
