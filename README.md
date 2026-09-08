@@ -27,9 +27,10 @@ You can also open `dist/index.html` directly. The local server gives the most co
 - The first tap on Gender chooses Male; subsequent taps let you select another option. Tap the date field to fill it or its calendar icon to choose a date.
 - Check “Same as the previously filled Current Address” to copy the current address. Later changes to the current address stay synchronized while this checkbox is selected.
 - Both username/password and x-karza-key login lead into the same journey.
-- Permission dialogs, location, camera, recordings, verification, and reports are simulated locally. No actual camera, microphone, location, authentication, KYC, or OTP service is accessed.
+- **The camera is real.** The selfie and video-liveness steps open the device camera and microphone, the liveness step records an actual clip, and the review screen plays that clip back with its own audio. A frame is kept from the capture and is what the recording bar and the report's “on Application Form” photograph show. Nothing is uploaded: the clip and the frame live in the browser for the length of the journey and are dropped on “Done”. Where there is no camera — no webcam, a refused permission, an older browser — every one of those screens falls back to the supplied artwork and the journey still runs end to end.
+- Location, verification, OTPs and the reports remain simulated locally. No location, authentication, KYC or OTP service is contacted.
 - Selfie capture advances through framing and capture states automatically. For the video step, press **Start**, then **Stop** within ten seconds, review, and confirm. Waiting more than ten seconds shows the retry state.
-- The captured video review uses the supplied portrait with simulated playback controls; the exports did not include a video or audio file.
+- The review screen plays the clip that was just recorded, with real play, pause, scrub and mute. Its length is the real recording's, not a fixed twelve seconds.
 - PAN consent must be checked before continuing. Expand the recording bar to see the portrait and application number. Expand/collapse report sections to inspect comparisons.
 - **Done** starts a new journey and clears entered values. Refreshing also clears entered values. Browser back/forward follows the screen history.
 
@@ -132,6 +133,9 @@ npm run build:vendor
 - `dist/app.js` — routing, forms, validation, tap-to-fill, OTPs, capture states, and reports.
 - `dist/assets/` — original artwork and photographs extracted from the supplied PDFs, plus webfont subsets reconstructed from their original outlined glyphs. Additional characters fall back to the browser’s sans-serif font.
 - `dist/assist.js` — co-browse start-up and the voice help button.
+- The camera lives in `dist/app.js` (`camera`): one stream, opened when a capture screen
+  needs it and released the moment the journey leaves one, so the recording light is never
+  on for a screen that is not recording.
 - `dist/vendor/` — script-tag builds of `@creditnirvana/cobrowse` and the Sarvam browser SDK.
 - `server.mjs` — optional static local server.
 - `tests/journey.test.mjs` — dependency-free checks of state transitions, validation, field behavior, and screen wiring.
