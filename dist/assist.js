@@ -269,7 +269,7 @@
     return startCoBrowse(code);
   }
 
-  async function start() {
+  async function start(micPrimed) {
     if (!window.SarvamConvAI) { paint('The assistant is unavailable on this page. Please reload and try again.'); return; }
     const attempt = ++generation;
     requestController = new AbortController();
@@ -278,6 +278,9 @@
     paint();
     let conversation;
     try {
+      // Let the permission settle first: the SDK's getUserMedia comes several
+      // awaits later, far outside the tap that could have prompted for it.
+      if (micPrimed) await micPrimed;
       const screenCode = await openSession(signal);
       if (attempt !== generation) return;
       const session = await postJSON(`${WORKER}/api/extension/session`, { scope: 'perfios' }, signal);
@@ -340,9 +343,37 @@
     }
   }
 
+  /**
+   * ASK FOR THE MICROPHONE INSIDE THE TAP.
+   *
+   * getUserMedia only prompts while the tap that triggered it still counts as user
+   * activation. Everything this button does before the voice SDK starts — opening the
+   * screen session, waiting for the consent dialog, fetching a Sarvam token — is
+   * asynchronous, and by the time the SDK finally asks, the activation has expired.
+   * A desktop browser never notices, because the first grant is remembered per origin.
+   * A phone that has never granted it gets NO PROMPT AT ALL and a bare rejection, which
+   * reads as "it never even asked me". Reported from mobile Chrome.
+   *
+   * So ask here, while the tap is still live. The tracks are stopped immediately: this
+   * exists only to turn the permission into a decision. Once granted, the SDK's own
+   * call needs no prompt.
+   */
+  function primeMicrophone() {
+    try {
+      const ask = navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+        ? navigator.mediaDevices.getUserMedia({ audio: true }) : null;
+      if (!ask) return Promise.resolve(false);
+      return ask.then(function (stream) {
+        stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) { /* gone */ } });
+        return true;
+      }).catch(function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
+  }
+
   btn.addEventListener('click', () => {
     if (phase === 'live' || phase === 'connecting') void stop();
-    else void start();
+    // Prime the permission in the gesture, then start. See primeMicrophone.
+    else { const mic = primeMicrophone(); void start(mic); }
   });
   endSharing.addEventListener('click', () => { void stop(); });
   window.addEventListener('pagehide', () => { void stop(); });
