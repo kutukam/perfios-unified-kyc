@@ -336,7 +336,24 @@
       // A late permission grant must release its microphone even after Cancel or
       // a timeout. It must never reconnect an abandoned attempt.
       started.then(() => { if (!isCurrent()) void releaseVoice(conversation); }, () => {});
-      await deadline(Promise.all([started, connected]), 20000, 'Allow microphone access, then tap again.');
+      /*
+       * TWO WAYS TO LEARN THE SAME FACT.
+       *
+       * This used to accept only the status callback reporting connected/listening/
+       * speaking. On a laptop that event always arrives; on mobile it does not, and the
+       * page then sat here until the 20s deadline and reported a failure for a call that
+       * had actually connected. The personal loan journey never had the bug because it
+       * asks the SDK directly (waitForConnect) instead of waiting to be told.
+       *
+       * So take whichever answers first. The event stays primary; polling is the floor.
+       */
+      const polled = (typeof conversation.waitForConnect === 'function')
+        ? Promise.resolve().then(() => conversation.waitForConnect(15)).then(
+            (ok) => { if (!ok) throw new Error('not_connected'); }, () => { throw new Error('not_connected'); })
+        : new Promise(() => {});
+      polled.catch(() => {});
+      const acknowledged = Promise.any ? Promise.any([connected, polled]) : connected;
+      await deadline(Promise.all([started, acknowledged]), 20000, 'Could not reach the assistant. Tap the microphone to try again.');
       if (!isCurrent()) { await releaseVoice(conversation); return; }
       phase = 'live';
       paint();
