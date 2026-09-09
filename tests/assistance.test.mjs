@@ -51,7 +51,7 @@ test('voice waits for screen consent, active socket and the bot acknowledgement'
   assert.equal(f.voices[0].options.config.app_id,'One-SDK-GFF-e5422ef4-af74');
   // Pinned deliberately: a commit on the dashboard mints a NEW version and a stale pin
   // quietly keeps serving the old agent. Confirmed against GET /versions before bumping.
-  assert.equal(f.voices[0].options.config.version,4);
+  assert.equal(f.voices[0].options.config.version,6);
   await f.connected();assert.match(f.mic.className,/is-live/);assert.equal(f.status.hidden,false);
   await f.click();assert.equal(f.browsers[0].ends,1);assert.ok(f.voices[0].stops);assert.equal(f.status.hidden,true);
 });
