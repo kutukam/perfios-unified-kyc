@@ -37,7 +37,7 @@
     orgId: '019ec301-92a0-7a28-846c-b1afafcdf30d',
     workspaceId: '019ec301-92a7-7f33-81f2-14326ae2265e',
     appId: 'One-SDK-GFF-e5422ef4-af74',
-    version: 3
+    version: 4
   };
 
   /* An authoring escape hatch, not a customer-facing feature: ?cb_endpoint=http://localhost:8787
