@@ -280,7 +280,15 @@
     try {
       // Let the permission settle first: the SDK's getUserMedia comes several
       // awaits later, far outside the tap that could have prompted for it.
-      if (micPrimed) await micPrimed;
+      if (micPrimed) {
+        const mic = await micPrimed;
+        if (mic === 'denied') {
+          // Nothing in this page can reopen a permission the browser has blocked, so
+          // say where the switch is instead of asking them to tap again forever.
+          await stop("Microphone is blocked for this site. In Chrome tap the icon left of the address bar, turn Microphone on, then tap again.");
+          return;
+        }
+      }
       const screenCode = await openSession(signal);
       if (attempt !== generation) return;
       const session = await postJSON(`${WORKER}/api/extension/session`, { scope: 'perfios' }, signal);
@@ -365,8 +373,13 @@
       if (!ask) return Promise.resolve(false);
       return ask.then(function (stream) {
         stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) { /* gone */ } });
-        return true;
-      }).catch(function () { return false; });
+        return 'granted';
+      }).catch(function (e) {
+        // NotAllowedError covers both "they just said no" and "this site is already
+        // blocked in settings". Only the second one cannot be prompted for again, and
+        // the Permissions API is the only way to tell them apart.
+        return (e && e.name === 'NotAllowedError') ? 'denied' : 'unavailable';
+      });
     } catch (e) { return Promise.resolve(false); }
   }
 
